@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>노형 배송 동선 - 3단계</title>
+<title>노형 배송 동선 - 4단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -57,9 +57,14 @@
   .toolbar button {
     padding: 6px 10px; font-size: 12px; border: none;
     border-radius: 4px; cursor: pointer; flex: 1;
+    min-width: 80px;
   }
   .btn-add { background: #2c5f8d; color: white; }
   .btn-add.active { background: #d9534f; }
+  .btn-route { background: #9c27b0; color: white; }
+  .btn-route.active { background: #d9534f; }
+  .btn-new { background: #ff9800; color: white; }
+  .btn-new.active { background: #d9534f; }
   .btn-export { background: #5cb85c; color: white; }
   .btn-import { background: #f0ad4e; color: white; }
   .btn-clear { background: #d9534f; color: white; }
@@ -209,6 +214,10 @@
         <input type="text" id="searchBox" placeholder="예: 정든마을">
       </div>
       <div class="toolbar">
+        <button class="btn-route" id="btnDrawRoute">🖊️ 동선 그리기</button>
+        <button class="btn-new" id="btnAddNew">➕ 신규 추가</button>
+      </div>
+      <div class="toolbar">
         <button class="btn-export" id="btnExport">📤 내보내기</button>
         <button class="btn-import" id="btnImport">📥 불러오기</button>
         <button class="btn-clear" id="btnClearAll">🗑️ 초기화</button>
@@ -337,9 +346,16 @@ const STORAGE_KEY = 'nohyeong_delivery_v1';
 let map;
 let pinsData = {};      // {1: {lat, lng, name, memo}, ...}
 let markers = {};       // {1: marker, ...}
-let polyline = null;
+let polylines = [];     // 그려진 동선들 (배열)
 let pendingPinNum = null;  // 핀 찍기 대기 중인 번호
 let editingPinNum = null;  // 모달에서 편집 중인 번호
+let newPinCounter = 1;  // 신규 핀 번호 (N1, N2, ...)
+
+// 동선 그리기 모드
+let isDrawingRoute = false;
+let currentRoutePath = [];
+let currentRoutePolyline = null;
+let currentRouteMarkers = [];
 
 // ========== 저장/복원 ==========
 function saveData() {
@@ -368,8 +384,11 @@ function initMap() {
     }
   });
   
+  // 지도 클릭 이벤트
   naver.maps.Event.addListener(map, 'click', function(e) {
-    if (pendingPinNum !== null) {
+    if (isDrawingRoute) {
+      handleRouteClick(e.coord);
+    } else if (pendingPinNum !== null) {
       placePin(pendingPinNum, e.coord);
       pendingPinNum = null;
       hideModeBanner();
@@ -377,12 +396,27 @@ function initMap() {
     }
   });
   
+  // 지도 더블클릭 이벤트
+  naver.maps.Event.addListener(map, 'dblclick', function(e) {
+    if (isDrawingRoute) {
+      handleRouteDoubleClick(e.coord);
+    }
+  });
+  
+  // 마우스 이동 (동선 그리기 미리보기)
+  naver.maps.Event.addListener(map, 'mousemove', function(e) {
+    if (isDrawingRoute && currentRoutePath.length > 0) {
+      updateRoutePreview(e.coord);
+    }
+  });
+  
   // 저장된 핀 복원
   Object.keys(pinsData).forEach(num => {
     const d = pinsData[num];
-    createMarker(parseInt(num), new naver.maps.LatLng(d.lat, d.lng));
+    createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
   });
-  redrawPolyline();
+  
+  loadRoutes();
 }
 
 // ========== 핀 배치 ==========
@@ -408,11 +442,15 @@ function placePin(num, latlng) {
 }
 
 function createMarker(num, latlng) {
+  const isNew = typeof num === 'string' && num.startsWith('N');
+  const displayNum = isNew ? num.substring(1) : num;
+  const bgColor = isNew ? '#ff9800' : '#d9534f';
+  
   const marker = new naver.maps.Marker({
     position: latlng,
     map: map,
     icon: {
-      content: `<div class="pin-label">${num}</div>`,
+      content: `<div class="pin-label" style="background:${bgColor}">${displayNum}</div>`,
       anchor: new naver.maps.Point(15, 15)
     },
     draggable: true,
@@ -428,109 +466,136 @@ function createMarker(num, latlng) {
     pinsData[num].lat = pos.y;
     pinsData[num].lng = pos.x;
     saveData();
-    redrawPolyline();
   });
   
   markers[num] = marker;
 }
 
-// ========== 동선 ==========
-let routePoints = [];  // 경로점 저장 (핀 사이 중간점)
+// ========== 동선 그리기 ==========
+function startDrawingRoute() {
+  isDrawingRoute = true;
+  currentRoutePath = [];
+  currentRouteMarkers = [];
+  document.getElementById('btnDrawRoute').classList.add('active');
+  showModeBanner('🖊️ 동선 그리기: 더블클릭으로 시작 (ESC 취소)');
+}
 
-function redrawPolyline() {
-  if (polyline) polyline.setMap(null);
-  
-  const sortedNums = Object.keys(pinsData)
-    .map(Number)
-    .sort((a, b) => a - b);
-  
-  if (sortedNums.length < 2) {
-    polyline = null;
-    return;
+function handleRouteDoubleClick(latlng) {
+  if (currentRoutePath.length === 0) {
+    // 시작점
+    currentRoutePath.push(latlng);
+    addRouteMarker(latlng, '시작');
+    showModeBanner('🖊️ 클릭으로 경유점 추가, 더블클릭으로 완성 (ESC 취소)');
+  } else {
+    // 완성
+    currentRoutePath.push(latlng);
+    finishRoute();
   }
-  
-  // 핀 좌표 + 경로점 조합
-  const path = [];
-  for (let i = 0; i < sortedNums.length; i++) {
-    const num = sortedNums[i];
-    path.push(new naver.maps.LatLng(pinsData[num].lat, pinsData[num].lng));
-    
-    // 다음 핀으로 가는 중간 경로점들 추가
-    if (i < sortedNums.length - 1) {
-      const nextNum = sortedNums[i + 1];
-      const key = `${num}-${nextNum}`;
-      if (routePoints[key]) {
-        routePoints[key].forEach(pt => {
-          path.push(new naver.maps.LatLng(pt.lat, pt.lng));
-        });
-      }
+}
+
+function handleRouteClick(latlng) {
+  if (currentRoutePath.length === 0) return;
+  currentRoutePath.push(latlng);
+  addRouteMarker(latlng, currentRoutePath.length);
+  updateRoutePreview(latlng);
+}
+
+function addRouteMarker(latlng, label) {
+  const marker = new naver.maps.Marker({
+    position: latlng,
+    map: map,
+    icon: {
+      content: `<div style="background:#9c27b0;color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">${label}</div>`,
+      anchor: new naver.maps.Point(12, 12)
     }
-  }
+  });
+  currentRouteMarkers.push(marker);
+}
+
+function updateRoutePreview(latlng) {
+  if (currentRoutePolyline) currentRoutePolyline.setMap(null);
   
-  polyline = new naver.maps.Polyline({
+  const path = [...currentRoutePath, latlng];
+  currentRoutePolyline = new naver.maps.Polyline({
     map: map,
     path: path,
+    strokeColor: '#9c27b0',
+    strokeWeight: 4,
+    strokeOpacity: 0.6,
+    strokeStyle: 'solid'
+  });
+}
+
+function finishRoute() {
+  if (currentRoutePolyline) currentRoutePolyline.setMap(null);
+  
+  // 최종 동선 생성
+  const finalPolyline = new naver.maps.Polyline({
+    map: map,
+    path: currentRoutePath,
     strokeColor: '#2c5f8d',
     strokeWeight: 4,
-    strokeOpacity: 0.7,
-    strokeStyle: 'solid',
-    clickable: true
+    strokeOpacity: 0.8,
+    strokeStyle: 'solid'
   });
   
-  // 동선 클릭으로 경로점 추가
-  naver.maps.Event.addListener(polyline, 'click', function(e) {
-    addRoutePoint(e.coord);
+  polylines.push({
+    polyline: finalPolyline,
+    path: currentRoutePath.map(p => ({lat: p.y, lng: p.x}))
   });
+  
+  // 마커 제거
+  currentRouteMarkers.forEach(m => m.setMap(null));
+  
+  // 초기화
+  isDrawingRoute = false;
+  currentRoutePath = [];
+  currentRoutePolyline = null;
+  currentRouteMarkers = [];
+  document.getElementById('btnDrawRoute').classList.remove('active');
+  hideModeBanner();
+  
+  saveRoutes();
 }
 
-// 경로점 추가 (동선 위 클릭한 곳에 중간점 추가)
-function addRoutePoint(latlng) {
-  if (Object.keys(pinsData).length < 2) return;
+function cancelRouteDrawing() {
+  if (currentRoutePolyline) currentRoutePolyline.setMap(null);
+  currentRouteMarkers.forEach(m => m.setMap(null));
   
-  // 가장 가까운 두 핀 찾기
-  const sorted = Object.keys(pinsData).map(Number).sort((a,b) => a-b);
-  let closestPair = null;
-  let minDist = Infinity;
-  
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const p1 = new naver.maps.LatLng(pinsData[sorted[i]].lat, pinsData[sorted[i]].lng);
-    const p2 = new naver.maps.LatLng(pinsData[sorted[i+1]].lat, pinsData[sorted[i+1]].lng);
-    const dist = distanceToSegment(latlng, p1, p2);
-    if (dist < minDist) {
-      minDist = dist;
-      closestPair = [sorted[i], sorted[i+1]];
+  isDrawingRoute = false;
+  currentRoutePath = [];
+  currentRoutePolyline = null;
+  currentRouteMarkers = [];
+  document.getElementById('btnDrawRoute').classList.remove('active');
+  hideModeBanner();
+}
+
+function saveRoutes() {
+  try {
+    const data = polylines.map(r => r.path);
+    localStorage.setItem('nohyeong_routes_v1', JSON.stringify(data));
+  } catch(e) { console.error('동선 저장 실패', e); }
+}
+
+function loadRoutes() {
+  try {
+    const raw = localStorage.getItem('nohyeong_routes_v1');
+    if (raw) {
+      const routesData = JSON.parse(raw);
+      routesData.forEach(pathData => {
+        const path = pathData.map(p => new naver.maps.LatLng(p.lat, p.lng));
+        const polyline = new naver.maps.Polyline({
+          map: map,
+          path: path,
+          strokeColor: '#2c5f8d',
+          strokeWeight: 4,
+          strokeOpacity: 0.8,
+          strokeStyle: 'solid'
+        });
+        polylines.push({ polyline, path: pathData });
+      });
     }
-  }
-  
-  if (closestPair && minDist < 0.01) {  // 충분히 가까운 경우만
-    const key = `${closestPair[0]}-${closestPair[1]}`;
-    if (!routePoints[key]) routePoints[key] = [];
-    routePoints[key].push({ lat: latlng.y, lng: latlng.x });
-    saveRoutePoints();
-    redrawPolyline();
-  }
-}
-
-// 점과 선분 사이 거리 계산 (간단한 유클리드 거리)
-function distanceToSegment(pt, p1, p2) {
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
-  if (dx === 0 && dy === 0) return Math.hypot(pt.x - p1.x, pt.y - p1.y);
-  const t = Math.max(0, Math.min(1, ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / (dx * dx + dy * dy)));
-  return Math.hypot(pt.x - (p1.x + t * dx), pt.y - (p1.y + t * dy));
-}
-
-function saveRoutePoints() {
-  try {
-    localStorage.setItem('nohyeong_route_v1', JSON.stringify(routePoints));
-  } catch(e) { console.error('경로점 저장 실패', e); }
-}
-
-function loadRoutePoints() {
-  try {
-    const raw = localStorage.getItem('nohyeong_route_v1');
-    if (raw) routePoints = JSON.parse(raw);
-  } catch(e) { console.error('경로점 복원 실패', e); routePoints = []; }
+  } catch(e) { console.error('동선 복원 실패', e); }
 }
 
 // ========== 사이드바 리스트 ==========
@@ -594,27 +659,51 @@ function focusPin(num) {
   setTimeout(() => openModal(num), 300);
 }
 
+// ========== 신규 핀 추가 ==========
+function startAddingNew() {
+  if (pendingPinNum !== null) return;
+  
+  const newNum = `N${newPinCounter}`;
+  newPinCounter++;
+  pendingPinNum = newNum;
+  
+  const banner = document.getElementById('modeBanner');
+  banner.textContent = `➕ 신규 ${newNum}: 지도를 클릭해서 위치 지정 (ESC 취소)`;
+  banner.classList.add('show');
+  
+  document.getElementById('btnAddNew').classList.add('active');
+}
+
 function deletePin(num) {
   if (!confirm(`${num}번 핀을 삭제할까요?`)) return;
   if (markers[num]) markers[num].setMap(null);
   delete markers[num];
   delete pinsData[num];
   saveData();
-  redrawPolyline();
   renderList();
   updateStats();
 }
 
 // ========== 모드 배너 ==========
-function showModeBanner(num) {
-  const a = ADDRESSES.find(x => x.n === num);
+function showModeBanner(text) {
   const b = document.getElementById('modeBanner');
-  b.textContent = `📍 ${num}번 (${a.road} ${a.detail}) - 지도를 클릭하세요 (ESC 취소)`;
+  if (typeof text === 'string') {
+    b.textContent = text;
+  } else {
+    // 숫자인 경우 (기존 핀)
+    const a = ADDRESSES.find(x => x.n === text);
+    if (a) {
+      b.textContent = `📍 ${text}번 (${a.road} ${a.detail}) - 지도를 클릭하세요 (ESC 취소)`;
+    } else {
+      b.textContent = `📍 ${text}번 핀 - 지도를 클릭하세요 (ESC 취소)`;
+    }
+  }
   b.classList.add('show');
 }
 
 function hideModeBanner() {
   document.getElementById('modeBanner').classList.remove('show');
+  document.getElementById('btnAddNew').classList.remove('active');
 }
 
 // ========== 모달 ==========
@@ -659,10 +748,10 @@ function updateStats() {
 // ========== 내보내기/불러오기 ==========
 function exportData() {
   const data = {
-    version: 2,
+    version: 3,
     exported_at: new Date().toISOString(),
     pins: pinsData,
-    routePoints: routePoints
+    routes: polylines.map(r => r.path)
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -681,21 +770,37 @@ function importData(file) {
       if (!data.pins) throw new Error('잘못된 파일');
       if (!confirm(`${Object.keys(data.pins).length}개의 핀을 불러옵니다. 현재 데이터는 덮어쓰기 됩니다. 계속할까요?`)) return;
       
-      // 기존 마커 삭제
+      // 기존 마커 및 동선 삭제
       Object.values(markers).forEach(m => m.setMap(null));
       markers = {};
-      if (polyline) { polyline.setMap(null); polyline = null; }
+      polylines.forEach(r => r.polyline.setMap(null));
+      polylines = [];
       
       // 새 데이터 적용
       pinsData = data.pins;
-      routePoints = data.routePoints || [];
       Object.keys(pinsData).forEach(num => {
         const d = pinsData[num];
-        createMarker(parseInt(num), new naver.maps.LatLng(d.lat, d.lng));
+        createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
       });
-      redrawPolyline();
+      
+      // 동선 복원
+      if (data.routes) {
+        data.routes.forEach(pathData => {
+          const path = pathData.map(p => new naver.maps.LatLng(p.lat, p.lng));
+          const polyline = new naver.maps.Polyline({
+            map: map,
+            path: path,
+            strokeColor: '#2c5f8d',
+            strokeWeight: 4,
+            strokeOpacity: 0.8,
+            strokeStyle: 'solid'
+          });
+          polylines.push({ polyline, path: pathData });
+        });
+      }
+      
       saveData();
-      saveRoutePoints();
+      saveRoutes();
       renderList();
       updateStats();
       alert('불러오기 완료!');
@@ -707,16 +812,17 @@ function importData(file) {
 }
 
 function clearAll() {
-  if (!confirm('모든 핀과 메모를 삭제할까요?\n(JSON 백업 후 진행 권장)')) return;
+  if (!confirm('모든 핀과 동선을 삭제할까요?\n(JSON 백업 후 진행 권장)')) return;
   if (!confirm('정말로 모두 삭제합니다. 되돌릴 수 없습니다.')) return;
   
   Object.values(markers).forEach(m => m.setMap(null));
   markers = {};
-  if (polyline) { polyline.setMap(null); polyline = null; }
+  polylines.forEach(r => r.polyline.setMap(null));
+  polylines = [];
   pinsData = {};
-  routePoints = [];
+  newPinCounter = 1;
   saveData();
-  saveRoutePoints();
+  saveRoutes();
   renderList();
   updateStats();
 }
@@ -763,8 +869,17 @@ function searchAddress(query) {
         }, 100);
         renderList();
       } else {
-        console.log('매칭되는 미완료 핀 없음');
-        // 매칭 실패해도 지도는 이동했으니 수동으로 찍을 수 있음
+        console.log('매칭되는 미완료 핀 없음 - 신규 핀 생성');
+        // 명단에 없으면 신규 핀 자동 생성
+        const newNum = `N${newPinCounter}`;
+        newPinCounter++;
+        placePin(newNum, latlng);
+        pinsData[newNum].name = query.trim();
+        saveData();
+        setTimeout(() => {
+          alert(`✅ 신규 핀 ${newNum}이 생성되었어요!\n${query.trim()}\n\n위치를 확인하고 이름/메모를 추가하세요.`);
+        }, 100);
+        renderList();
       }
     } else {
       alert('주소를 찾을 수 없습니다.');
@@ -814,6 +929,18 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
 
 document.getElementById('btnClearAll').addEventListener('click', clearAll);
 
+// 동선 그리기 버튼
+document.getElementById('btnDrawRoute').addEventListener('click', () => {
+  if (isDrawingRoute) {
+    cancelRouteDrawing();
+  } else {
+    startDrawingRoute();
+  }
+});
+
+// 신규 추가 버튼
+document.getElementById('btnAddNew').addEventListener('click', startAddingNew);
+
 document.getElementById('btnModalSave').addEventListener('click', saveModal);
 document.getElementById('btnModalCancel').addEventListener('click', closeModal);
 document.getElementById('btnPinDelete').addEventListener('click', () => {
@@ -829,7 +956,9 @@ document.getElementById('modal').addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (pendingPinNum !== null) {
+    if (isDrawingRoute) {
+      cancelRouteDrawing();
+    } else if (pendingPinNum !== null) {
       pendingPinNum = null;
       hideModeBanner();
       renderList();
@@ -841,7 +970,6 @@ document.addEventListener('keydown', (e) => {
 
 // ========== 초기화 ==========
 loadData();
-loadRoutePoints();
 renderList();
 updateStats();
 
