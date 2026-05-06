@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>노형 배송 동선 - 2단계</title>
+<title>노형 배송 동선 - 3단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -38,6 +38,16 @@
   #sidebarTop {
     padding: 10px; border-bottom: 1px solid #ddd; background: white;
     display: flex; flex-direction: column; gap: 8px;
+  }
+  .search-group {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .search-label {
+    font-size: 11px; color: #666; font-weight: 500;
+  }
+  #mapSearch {
+    width: 100%; padding: 7px 10px; border: 1px solid #2c5f8d;
+    border-radius: 4px; font-size: 13px;
   }
   #searchBox {
     width: 100%; padding: 7px 10px; border: 1px solid #ccc;
@@ -163,8 +173,19 @@
     #sidebar { 
       position: absolute; left: 0; top: 0; bottom: 0; z-index: 50;
       box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+      margin-left: -320px; /* 모바일 기본 닫힘 */
     }
-    #sidebar.collapsed { margin-left: -320px; }
+    #sidebar.open { margin-left: 0; }
+    
+    /* 모바일에서 사이드바 오버레이 배경 */
+    #sidebarOverlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 49;
+    }
+    #sidebarOverlay.show { display: block; }
   }
 </style>
 </head>
@@ -179,7 +200,14 @@
 <div id="main">
   <div id="sidebar">
     <div id="sidebarTop">
-      <input type="text" id="searchBox" placeholder="🔍 주소 검색 (예: 정든마을)">
+      <div class="search-group">
+        <label class="search-label">🔍 주소 검색 (지도 이동)</label>
+        <input type="text" id="mapSearch" placeholder="예: 도령로127-1">
+      </div>
+      <div class="search-group">
+        <label class="search-label">📋 명단 필터</label>
+        <input type="text" id="searchBox" placeholder="예: 정든마을">
+      </div>
       <div class="toolbar">
         <button class="btn-export" id="btnExport">📤 내보내기</button>
         <button class="btn-import" id="btnImport">📥 불러오기</button>
@@ -194,6 +222,9 @@
     <div id="modeBanner">📍 지도를 클릭해서 핀을 찍으세요 (ESC로 취소)</div>
   </div>
 </div>
+
+<!-- 모바일 오버레이 -->
+<div id="sidebarOverlay"></div>
 
 <!-- 모달 -->
 <div id="modal">
@@ -404,6 +435,8 @@ function createMarker(num, latlng) {
 }
 
 // ========== 동선 ==========
+let routePoints = [];  // 경로점 저장 (핀 사이 중간점)
+
 function redrawPolyline() {
   if (polyline) polyline.setMap(null);
   
@@ -416,9 +449,23 @@ function redrawPolyline() {
     return;
   }
   
-  const path = sortedNums.map(n => 
-    new naver.maps.LatLng(pinsData[n].lat, pinsData[n].lng)
-  );
+  // 핀 좌표 + 경로점 조합
+  const path = [];
+  for (let i = 0; i < sortedNums.length; i++) {
+    const num = sortedNums[i];
+    path.push(new naver.maps.LatLng(pinsData[num].lat, pinsData[num].lng));
+    
+    // 다음 핀으로 가는 중간 경로점들 추가
+    if (i < sortedNums.length - 1) {
+      const nextNum = sortedNums[i + 1];
+      const key = `${num}-${nextNum}`;
+      if (routePoints[key]) {
+        routePoints[key].forEach(pt => {
+          path.push(new naver.maps.LatLng(pt.lat, pt.lng));
+        });
+      }
+    }
+  }
   
   polyline = new naver.maps.Polyline({
     map: map,
@@ -426,8 +473,64 @@ function redrawPolyline() {
     strokeColor: '#2c5f8d',
     strokeWeight: 4,
     strokeOpacity: 0.7,
-    strokeStyle: 'solid'
+    strokeStyle: 'solid',
+    clickable: true
   });
+  
+  // 동선 클릭으로 경로점 추가
+  naver.maps.Event.addListener(polyline, 'click', function(e) {
+    addRoutePoint(e.coord);
+  });
+}
+
+// 경로점 추가 (동선 위 클릭한 곳에 중간점 추가)
+function addRoutePoint(latlng) {
+  if (Object.keys(pinsData).length < 2) return;
+  
+  // 가장 가까운 두 핀 찾기
+  const sorted = Object.keys(pinsData).map(Number).sort((a,b) => a-b);
+  let closestPair = null;
+  let minDist = Infinity;
+  
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const p1 = new naver.maps.LatLng(pinsData[sorted[i]].lat, pinsData[sorted[i]].lng);
+    const p2 = new naver.maps.LatLng(pinsData[sorted[i+1]].lat, pinsData[sorted[i+1]].lng);
+    const dist = distanceToSegment(latlng, p1, p2);
+    if (dist < minDist) {
+      minDist = dist;
+      closestPair = [sorted[i], sorted[i+1]];
+    }
+  }
+  
+  if (closestPair && minDist < 0.01) {  // 충분히 가까운 경우만
+    const key = `${closestPair[0]}-${closestPair[1]}`;
+    if (!routePoints[key]) routePoints[key] = [];
+    routePoints[key].push({ lat: latlng.y, lng: latlng.x });
+    saveRoutePoints();
+    redrawPolyline();
+  }
+}
+
+// 점과 선분 사이 거리 계산 (간단한 유클리드 거리)
+function distanceToSegment(pt, p1, p2) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  if (dx === 0 && dy === 0) return Math.hypot(pt.x - p1.x, pt.y - p1.y);
+  const t = Math.max(0, Math.min(1, ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(pt.x - (p1.x + t * dx), pt.y - (p1.y + t * dy));
+}
+
+function saveRoutePoints() {
+  try {
+    localStorage.setItem('nohyeong_route_v1', JSON.stringify(routePoints));
+  } catch(e) { console.error('경로점 저장 실패', e); }
+}
+
+function loadRoutePoints() {
+  try {
+    const raw = localStorage.getItem('nohyeong_route_v1');
+    if (raw) routePoints = JSON.parse(raw);
+  } catch(e) { console.error('경로점 복원 실패', e); routePoints = []; }
 }
 
 // ========== 사이드바 리스트 ==========
@@ -556,9 +659,10 @@ function updateStats() {
 // ========== 내보내기/불러오기 ==========
 function exportData() {
   const data = {
-    version: 1,
+    version: 2,
     exported_at: new Date().toISOString(),
-    pins: pinsData
+    pins: pinsData,
+    routePoints: routePoints
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -584,12 +688,14 @@ function importData(file) {
       
       // 새 데이터 적용
       pinsData = data.pins;
+      routePoints = data.routePoints || [];
       Object.keys(pinsData).forEach(num => {
         const d = pinsData[num];
         createMarker(parseInt(num), new naver.maps.LatLng(d.lat, d.lng));
       });
       redrawPolyline();
       saveData();
+      saveRoutePoints();
       renderList();
       updateStats();
       alert('불러오기 완료!');
@@ -608,14 +714,64 @@ function clearAll() {
   markers = {};
   if (polyline) { polyline.setMap(null); polyline = null; }
   pinsData = {};
+  routePoints = [];
   saveData();
+  saveRoutePoints();
   renderList();
   updateStats();
 }
 
+// ========== 주소 검색 (지도 이동) ==========
+function searchAddress(query) {
+  if (!query.trim()) return;
+  
+  // 제주시를 붙여서 검색
+  const fullAddress = `제주특별자치도 제주시 ${query.trim()}`;
+  
+  naver.maps.Service.geocode({
+    query: fullAddress
+  }, function(status, response) {
+    if (status !== naver.maps.Service.Status.OK) {
+      alert('주소를 찾을 수 없습니다. 정확한 도로명 주소를 입력하세요.');
+      return;
+    }
+    
+    const result = response.v2.addresses[0];
+    if (result) {
+      const latlng = new naver.maps.LatLng(result.y, result.x);
+      map.setCenter(latlng);
+      map.setZoom(17);
+    } else {
+      alert('주소를 찾을 수 없습니다.');
+    }
+  });
+}
+
 // ========== 이벤트 ==========
 document.getElementById('btnToggleSidebar').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const isMobile = window.innerWidth <= 768;
+  
+  if (isMobile) {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+  } else {
+    sidebar.classList.toggle('collapsed');
+  }
+});
+
+// 모바일 오버레이 클릭 시 사이드바 닫기
+document.getElementById('sidebarOverlay').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+});
+
+// 주소 검색 (엔터 키)
+document.getElementById('mapSearch').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    searchAddress(e.target.value);
+  }
 });
 
 document.getElementById('searchBox').addEventListener('input', renderList);
@@ -660,6 +816,7 @@ document.addEventListener('keydown', (e) => {
 
 // ========== 초기화 ==========
 loadData();
+loadRoutePoints();
 renderList();
 updateStats();
 
