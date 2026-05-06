@@ -485,9 +485,9 @@ function handleRouteDoubleClick(latlng) {
     // 시작점
     currentRoutePath.push(latlng);
     addRouteMarker(latlng, '시작');
-    showModeBanner('🖊️ 클릭으로 경유점 추가, 더블클릭으로 완성 (ESC 취소)');
-  } else {
-    // 완성
+    showModeBanner('🖊️클릭으로 경유점 추가, 더블클릭으로 완성 (ESC 취소)');
+  } else if (currentRoutePath.length >= 1) {
+    // 완성 - 마지막 클릭 위치를 종료점으로
     currentRoutePath.push(latlng);
     finishRoute();
   }
@@ -496,20 +496,23 @@ function handleRouteDoubleClick(latlng) {
 function handleRouteClick(latlng) {
   if (currentRoutePath.length === 0) return;
   currentRoutePath.push(latlng);
-  addRouteMarker(latlng, currentRoutePath.length);
+  // 중간 마커는 표시 안 함
   updateRoutePreview(latlng);
 }
 
 function addRouteMarker(latlng, label) {
-  const marker = new naver.maps.Marker({
-    position: latlng,
-    map: map,
-    icon: {
-      content: `<div style="background:#9c27b0;color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">${label}</div>`,
-      anchor: new naver.maps.Point(12, 12)
-    }
-  });
-  currentRouteMarkers.push(marker);
+  if (label === '시작') {
+    const marker = new naver.maps.Marker({
+      position: latlng,
+      map: map,
+      icon: {
+        content: `<div style="background:#9c27b0;color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">시작</div>`,
+        anchor: new naver.maps.Point(12, 12)
+      }
+    });
+    currentRouteMarkers.push(marker);
+  }
+  // 중간 번호는 표시 안 함
 }
 
 function updateRoutePreview(latlng) {
@@ -628,7 +631,8 @@ function renderList() {
         ${has 
           ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
              <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
-          : `<button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
+          : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
+             <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
         }
       </div>
     `;
@@ -672,6 +676,14 @@ function startAddingNew() {
   banner.classList.add('show');
   
   document.getElementById('btnAddNew').classList.add('active');
+}
+
+// 찾기 버튼 - 주소 검색해서 자동으로 핀 생성
+function searchAndPin(num) {
+  const addr = ADDRESSES.find(a => a.n === num);
+  if (!addr) return;
+  
+  searchAddress(addr.road);
 }
 
 function deletePin(num) {
