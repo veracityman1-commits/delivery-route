@@ -742,18 +742,29 @@ function searchAddress(query) {
       map.setCenter(latlng);
       map.setZoom(17);
       
-      // 검색한 주소와 일치하는 미완료 핀 찾기
+      // 검색한 주소와 일치하는 미완료 핀 찾기 (공백/하이픈 무시)
+      const searchClean = query.trim().toLowerCase().replace(/[\s-]/g, '');
+      console.log('검색어:', searchClean);
+      
       const matchingAddr = ADDRESSES.find(a => {
-        const road = a.road.toLowerCase();
-        const searchTerm = query.trim().toLowerCase();
-        return road.includes(searchTerm) && !pinsData[a.n];
+        const roadClean = a.road.toLowerCase().replace(/[\s-]/g, '');
+        const isMatch = roadClean.includes(searchClean) && !pinsData[a.n];
+        if (isMatch) {
+          console.log('매칭됨:', a.n, a.road);
+        }
+        return isMatch;
       });
       
       // 일치하는 주소 있으면 자동으로 핀 찍기
       if (matchingAddr) {
         placePin(matchingAddr.n, latlng);
-        alert(`✅ ${matchingAddr.n}번 핀이 자동으로 찍혔어요!\n위치를 확인하고 드래그로 조정하세요.`);
+        setTimeout(() => {
+          alert(`✅ ${matchingAddr.n}번 핀이 자동으로 찍혔어요!\n${matchingAddr.road} ${matchingAddr.detail}\n\n위치를 확인하고 드래그로 조정하세요.`);
+        }, 100);
         renderList();
+      } else {
+        console.log('매칭되는 미완료 핀 없음');
+        // 매칭 실패해도 지도는 이동했으니 수동으로 찍을 수 있음
       }
     } else {
       alert('주소를 찾을 수 없습니다.');
