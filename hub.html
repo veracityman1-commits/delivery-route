@@ -249,6 +249,33 @@
   
   <div class="content">
     
+    <!-- 0단계: PDF 변환 안내 -->
+    <div class="step" style="background:#fff3cd; border-left-color:#f39c12;">
+      <div class="step-title">
+        <span class="step-number" style="background:#f39c12;">0</span>
+        PDF 파일이 있다면?
+      </div>
+      
+      <p style="margin-bottom:15px; color:#666; font-size:14px;">
+        배송 명부가 PDF 형식이라면 먼저 CSV로 변환이 필요합니다.
+      </p>
+      
+      <button class="btn btn-primary" onclick="window.open('https://claude.ai/new', '_blank')" style="background:#f39c12;">
+        📄 클로드에서 PDF → CSV 변환하기
+      </button>
+      
+      <div style="margin-top:15px; padding:15px; background:white; border-radius:6px; font-size:13px; color:#666;">
+        <strong style="color:#333;">💡 변환 방법:</strong>
+        <ol style="margin:10px 0 0 20px; line-height:1.8;">
+          <li>위 버튼 클릭 → 클로드 새 대화 열림</li>
+          <li>PDF 파일 드래그 업로드</li>
+          <li>"이 PDF를 순번, 도로명주소, 세부주소 형식의 CSV로 변환해줘" 입력</li>
+          <li>생성된 CSV 파일 다운로드</li>
+          <li>아래 1단계에서 CSV 업로드</li>
+        </ol>
+      </div>
+    </div>
+    
     <!-- 1단계: CSV 업로드 -->
     <div class="step">
       <div class="step-title">
