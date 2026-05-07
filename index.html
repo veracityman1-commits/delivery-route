@@ -111,6 +111,20 @@
   #mapWrap { flex: 1; position: relative; }
   #map { width: 100%; height: 100%; }
   
+  /* 지도 위 컨트롤 버튼들 */
+  .map-controls {
+    position: absolute; bottom: 20px; right: 20px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 10;
+  }
+  .map-btn {
+    background: white; border: none; border-radius: 50%;
+    width: 48px; height: 48px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    font-size: 20px; display: flex; align-items: center; justify-content: center;
+  }
+  .map-btn:active { transform: scale(0.95); }
+  .map-btn.active { background: #2196f3; color: white; }
+  
   /* 핀 라벨 */
   .pin-label {
     background: #d9534f; color: white;
@@ -220,6 +234,9 @@
       <div class="toolbar">
         <button class="btn-export" id="btnExport">📤 내보내기</button>
         <button class="btn-import" id="btnImport">📥 불러오기</button>
+      </div>
+      <div class="toolbar">
+        <button class="btn-export" id="btnShare" style="background:#2196f3">🔗 공유하기</button>
         <button class="btn-clear" id="btnClearAll">🗑️ 초기화</button>
       </div>
     </div>
@@ -229,6 +246,12 @@
   <div id="mapWrap">
     <div id="map"></div>
     <div id="modeBanner">📍 지도를 클릭해서 핀을 찍으세요 (ESC로 취소)</div>
+    
+    <!-- 지도 컨트롤 -->
+    <div class="map-controls">
+      <button class="map-btn" id="btnMyLocation" title="내 위치로">📍</button>
+      <button class="map-btn" id="btnRotate" title="지도 회전">🧭</button>
+    </div>
   </div>
 </div>
 
@@ -255,7 +278,7 @@
   </div>
 </div>
 
-<input type="file" id="fileInput" accept=".json" style="display:none">
+<input type="file" id="fileInput" accept=".json,application/json,text/plain" style="display:none">
 
 <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=svwz8aul2j&submodules=geocoder,drawing"></script>
 
@@ -356,6 +379,13 @@ let isDrawingRoute = false;
 let currentRoutePath = [];
 let currentRoutePolyline = null;
 let currentRouteMarkers = [];
+
+// GPS 추적
+let myLocationMarker = null;
+let watchId = null;
+let isTrackingLocation = false;
+let rotateEnabled = false;
+let currentHeading = 0;
 
 // ========== 저장/복원 ==========
 function saveData() {
@@ -601,7 +631,116 @@ function loadRoutes() {
   } catch(e) { console.error('동선 복원 실패', e); }
 }
 
-// ========== 사이드바 리스트 ==========
+// ========== GPS 위치 추적 ==========
+function startLocationTracking() {
+  if (!navigator.geolocation) {
+    alert('이 브라우저는 위치 서비스를 지원하지 않습니다.');
+    return;
+  }
+  
+  if (isTrackingLocation) {
+    stopLocationTracking();
+    return;
+  }
+  
+  isTrackingLocation = true;
+  document.getElementById('btnMyLocation').classList.add('active');
+  
+  // 내 위치 마커 생성 (파란 점)
+  const options = {
+    enableHighAccuracy: true,
+    timeout: 5000,
+    maximumAge: 0
+  };
+  
+  watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const latlng = new naver.maps.LatLng(lat, lng);
+      
+      // 방향 정보 (나침반)
+      if (position.coords.heading !== null && position.coords.heading !== undefined) {
+        currentHeading = position.coords.heading;
+      }
+      
+      // 내 위치 마커 업데이트
+      if (!myLocationMarker) {
+        myLocationMarker = new naver.maps.Marker({
+          position: latlng,
+          map: map,
+          icon: {
+            content: `<div style="width:20px;height:20px;border-radius:50%;background:#4285f4;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+            anchor: new naver.maps.Point(10, 10)
+          },
+          zIndex: 1000
+        });
+      } else {
+        myLocationMarker.setPosition(latlng);
+      }
+      
+      // 지도 중심 이동 (처음 한 번 또는 계속 추적)
+      map.setCenter(latlng);
+      
+      // 지도 회전 (활성화된 경우)
+      if (rotateEnabled && currentHeading !== 0) {
+        map.setOptions({
+          heading: currentHeading
+        });
+      }
+    },
+    (error) => {
+      console.error('위치 추적 오류:', error);
+      let msg = '위치를 가져올 수 없습니다.';
+      if (error.code === error.PERMISSION_DENIED) {
+        msg = '위치 권한이 거부되었습니다.\n설정에서 위치 권한을 허용해주세요.';
+      }
+      alert(msg);
+      stopLocationTracking();
+    },
+    options
+  );
+}
+
+function stopLocationTracking() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  
+  if (myLocationMarker) {
+    myLocationMarker.setMap(null);
+    myLocationMarker = null;
+  }
+  
+  isTrackingLocation = false;
+  document.getElementById('btnMyLocation').classList.remove('active');
+  
+  // 지도 회전 리셋
+  if (map) {
+    map.setOptions({ heading: 0 });
+  }
+}
+
+function toggleRotate() {
+  rotateEnabled = !rotateEnabled;
+  
+  if (rotateEnabled) {
+    document.getElementById('btnRotate').classList.add('active');
+    if (!isTrackingLocation) {
+      alert('지도 회전은 GPS 추적 중에만 작동합니다.\n먼저 📍 버튼을 눌러주세요.');
+      rotateEnabled = false;
+      document.getElementById('btnRotate').classList.remove('active');
+    }
+  } else {
+    document.getElementById('btnRotate').classList.remove('active');
+    if (map) {
+      map.setOptions({ heading: 0 });
+    }
+  }
+}
+
+// ==========사이드바 리스트 ==========
 function renderList() {
   const search = document.getElementById('searchBox').value.toLowerCase();
   const list = document.getElementById('addrList');
@@ -755,6 +894,106 @@ function saveModal() {
 // ========== 통계 ==========
 function updateStats() {
   document.getElementById('doneCount').textContent = Object.keys(pinsData).length;
+}
+
+// ========== 공유하기 ==========
+function shareData() {
+  if (Object.keys(pinsData).length === 0) {
+    alert('공유할 핀이 없습니다. 먼저 핀을 찍어주세요.');
+    return;
+  }
+  
+  const data = {
+    pins: pinsData,
+    routes: polylines.map(r => r.path)
+  };
+  
+  // JSON을 Base64로 압축
+  const jsonStr = JSON.stringify(data);
+  const compressed = btoa(encodeURIComponent(jsonStr));
+  
+  // 공유 URL 생성
+  const shareUrl = `${window.location.origin}${window.location.pathname}?share=${compressed}`;
+  
+  // 클립보드에 복사
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      alert(`✅ 공유 링크가 복사되었습니다!\n\n카톡, 문자 등으로 보내주세요.\n받은 사람이 링크를 열면 같은 핀과 동선을 볼 수 있어요.\n\n링크: ${shareUrl.substring(0, 60)}...`);
+    }).catch(() => {
+      // 복사 실패 시 직접 보여주기
+      prompt('이 링크를 복사해서 공유하세요:', shareUrl);
+    });
+  } else {
+    // 구형 브라우저
+    prompt('이 링크를 복사해서 공유하세요:', shareUrl);
+  }
+}
+
+// 페이지 로드 시 공유 데이터 확인
+function loadSharedData() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sharedData = urlParams.get('share');
+  
+  if (sharedData) {
+    try {
+      // Base64 디코딩
+      const jsonStr = decodeURIComponent(atob(sharedData));
+      const data = JSON.parse(jsonStr);
+      
+      if (data.pins && Object.keys(data.pins).length > 0) {
+        // 기존 데이터 확인
+        if (Object.keys(pinsData).length > 0) {
+          if (!confirm(`공유받은 데이터를 불러올까요?\n현재 데이터는 덮어쓰기 됩니다.\n\n공유받은 핀: ${Object.keys(data.pins).length}개`)) {
+            return;
+          }
+        }
+        
+        // 기존 마커/동선 삭제
+        Object.values(markers).forEach(m => m.setMap(null));
+        markers = {};
+        polylines.forEach(r => r.polyline.setMap(null));
+        polylines = [];
+        
+        // 공유 데이터 적용
+        pinsData = data.pins;
+        
+        // 핀 복원
+        Object.keys(pinsData).forEach(num => {
+          const d = pinsData[num];
+          createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
+        });
+        
+        // 동선 복원
+        if (data.routes && data.routes.length > 0) {
+          data.routes.forEach(pathData => {
+            const path = pathData.map(p => new naver.maps.LatLng(p.lat, p.lng));
+            const polyline = new naver.maps.Polyline({
+              map: map,
+              path: path,
+              strokeColor: '#2c5f8d',
+              strokeWeight: 4,
+              strokeOpacity: 0.8,
+              strokeStyle: 'solid'
+            });
+            polylines.push({ polyline, path: pathData });
+          });
+        }
+        
+        saveData();
+        saveRoutes();
+        renderList();
+        updateStats();
+        
+        alert(`✅ 공유 데이터를 불러왔습니다!\n\n핀: ${Object.keys(data.pins).length}개\n동선: ${data.routes ? data.routes.length : 0}개`);
+        
+        // URL에서 share 파라미터 제거 (깔끔하게)
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch(err) {
+      console.error('공유 데이터 로드 실패:', err);
+      alert('공유 링크가 올바르지 않습니다.');
+    }
+  }
 }
 
 // ========== 내보내기/불러오기 ==========
@@ -930,6 +1169,8 @@ document.getElementById('searchBox').addEventListener('input', renderList);
 
 document.getElementById('btnExport').addEventListener('click', exportData);
 
+document.getElementById('btnShare').addEventListener('click', shareData);
+
 document.getElementById('btnImport').addEventListener('click', () => {
   document.getElementById('fileInput').click();
 });
@@ -952,6 +1193,12 @@ document.getElementById('btnDrawRoute').addEventListener('click', () => {
 
 // 신규 추가 버튼
 document.getElementById('btnAddNew').addEventListener('click', startAddingNew);
+
+// GPS 위치 추적 버튼
+document.getElementById('btnMyLocation').addEventListener('click', startLocationTracking);
+
+// 지도 회전 버튼
+document.getElementById('btnRotate').addEventListener('click', toggleRotate);
 
 document.getElementById('btnModalSave').addEventListener('click', saveModal);
 document.getElementById('btnModalCancel').addEventListener('click', closeModal);
@@ -987,8 +1234,13 @@ updateStats();
 
 if (typeof naver !== 'undefined' && naver.maps) {
   initMap();
+  // 지도 로드 후 공유 데이터 확인
+  setTimeout(() => loadSharedData(), 500);
 } else {
-  window.addEventListener('load', initMap);
+  window.addEventListener('load', () => {
+    initMap();
+    setTimeout(() => loadSharedData(), 500);
+  });
 }
 </script>
 
