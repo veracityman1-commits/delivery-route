@@ -73,6 +73,61 @@
   #addrList {
     flex: 1; overflow-y: auto; padding: 4px;
   }
+  
+  .zone-group {
+    margin-bottom: 8px;
+  }
+  
+  .zone-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    user-select: none;
+  }
+  
+  .zone-header:hover {
+    opacity: 0.9;
+  }
+  
+  .zone-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .zone-badge {
+    background: rgba(255,255,255,0.3);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  
+  .zone-arrow {
+    transition: transform 0.3s;
+  }
+  
+  .zone-group.collapsed .zone-arrow {
+    transform: rotate(-90deg);
+  }
+  
+  .zone-items {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+  }
+  
+  .zone-group.collapsed .zone-items {
+    max-height: 0;
+  }
+  
   .addr-item {
     background: white; margin-bottom: 4px; padding: 8px 10px;
     border-radius: 4px; border: 1px solid #e0e0e0;
@@ -158,6 +213,35 @@
     align-items: center; justify-content: center; z-index: 1000;
   }
   #modal.show { display: flex; }
+  
+  /* 비밀번호 모달 */
+  #passwordModal {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); display: none;
+    align-items: center; justify-content: center; z-index: 2000;
+  }
+  #passwordModal.show { display: flex; }
+  
+  .password-content {
+    background: white; border-radius: 12px; padding: 30px;
+    width: 90%; max-width: 400px; text-align: center;
+  }
+  
+  .password-content h3 {
+    margin-bottom: 20px; color: #2c5f8d; font-size: 20px;
+  }
+  
+  .password-content input {
+    width: 100%; padding: 15px; font-size: 24px;
+    border: 2px solid #2c5f8d; border-radius: 8px;
+    text-align: center; letter-spacing: 10px;
+    margin-bottom: 20px;
+  }
+  
+  .password-content .error {
+    color: #d9534f; font-size: 13px; margin-top: -15px; margin-bottom: 15px;
+  }
+  
   .modal-content {
     background: white; border-radius: 8px; padding: 20px;
     width: 90%; max-width: 420px; max-height: 90vh; overflow-y: auto;
@@ -240,7 +324,14 @@
       </div>
       <div class="toolbar">
         <button class="btn-export" id="btnShare" style="background:#2196f3">🔗 공유하기</button>
-        <button class="btn-clear" id="btnClearAll">🗑️ 초기화</button>
+        <div style="position:relative; flex:1;">
+          <button class="btn-clear" id="btnClearMenu">🗑️초기화 ▼</button>
+          <div id="clearDropdown" style="display:none; position:absolute; top:100%; right:0; background:white; border:1px solid #ddd; border-radius:4px; margin-top:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1); z-index:100; min-width:150px;">
+            <div style="padding:8px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #eee;" onclick="clearAll()">🗑️ 전체 초기화</div>
+            <div style="padding:8px 12px; cursor:pointer; font-size:12px; color:#f39c12;" onclick="alert('구역 헤더의 🗑️ 버튼을 사용하세요')">📁 구역별 삭제</div>
+            <div style="padding:8px 12px; cursor:pointer; font-size:12px; color:#3498db;" onclick="alert('개별 항목의 × 버튼을 사용하세요')">📍 개별 삭제</div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="addrList"></div>
@@ -261,6 +352,19 @@
 <!-- 모바일 오버레이 -->
 <div id="sidebarOverlay"></div>
 
+<!-- 비밀번호 모달 -->
+<div id="passwordModal">
+  <div class="password-content">
+    <h3>🔐 비밀번호 입력</h3>
+    <p style="color:#666; font-size:13px; margin-bottom:20px;">
+      관리자에게 받은 4자리 비밀번호를 입력하세요
+    </p>
+    <input type="password" id="passwordInput" maxlength="4" placeholder="****" inputmode="numeric">
+    <div class="error" id="passwordError"></div>
+    <button class="btn btn-primary" style="width:100%;" onclick="checkPassword()">확인</button>
+  </div>
+</div>
+
 <!-- 모달 -->
 <div id="modal">
   <div class="modal-content">
@@ -270,8 +374,8 @@
     <label for="modalName">핀 이름 (지도에서 호버 시 표시)</label>
     <input type="text" id="modalName" placeholder="예: 해든빌-701">
     
-    <label for="modalMemo">세부 메모 (비번, 출입 방법, 특이사항 등)</label>
-    <textarea id="modalMemo" placeholder="예: 비번 1234# / 문 앞 비닐 X / 월2목1"></textarea>
+    <label for="modalMemo">세부 메모</label>
+    <textarea id="modalMemo" placeholder="예:&#10;참고: 해든빌-701&#10;품명: 순한첫 소&#10;수량: 1"></textarea>
     
     <div class="modal-buttons">
       <button class="btn-delete" id="btnPinDelete">🗑️ 핀 삭제</button>
@@ -286,8 +390,8 @@
 <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=svwz8aul2j&submodules=geocoder,drawing"></script>
 
 <script>
-// ========== 76건 주소 데이터 ==========
-const ADDRESSES = [
+// ========== 주소 데이터 (동적 관리) ==========
+let ADDRESSES = [
   {n:1, road:"도령로127-1", detail:"해든빌-701"},
   {n:2, road:"도령로127-2", detail:"일류해든빌303호"},
   {n:3, road:"도령로103", detail:"한일시티파크-1607"},
@@ -495,7 +599,18 @@ function placePin(num, latlng) {
 function createMarker(num, latlng) {
   const isNew = typeof num === 'string' && num.startsWith('N');
   const displayNum = isNew ? num.substring(1) : num;
-  const bgColor = isNew ? '#ff9800' : '#d9534f';
+  
+  // 구역별 색상 (주소가 있을 때만)
+  let bgColor = '#d9534f';
+  if (!isNew) {
+    const addr = ADDRESSES.find(a => a.n === num);
+    if (addr) {
+      const zone = getZoneName(addr.road);
+      bgColor = getZoneColor(zone);
+    }
+  } else {
+    bgColor = '#ff9800';
+  }
   
   const marker = new naver.maps.Marker({
     position: latlng,
@@ -508,15 +623,33 @@ function createMarker(num, latlng) {
     title: pinsData[num] ? pinsData[num].name || `${num}번 핀` : `${num}번 핀`
   });
   
-  naver.maps.Event.addListener(marker, 'click', function() {
-    openModal(num);
+  let isDragging = false;
+  let dragStartTime = 0;
+  
+  // 드래그 시작 감지
+  naver.maps.Event.addListener(marker, 'dragstart', function() {
+    isDragging = true;
+    dragStartTime = Date.now();
   });
   
+  // 드래그 종료
   naver.maps.Event.addListener(marker, 'dragend', function() {
     const pos = marker.getPosition();
     pinsData[num].lat = pos.y;
     pinsData[num].lng = pos.x;
     saveData();
+    
+    // 드래그 후 짧은 시간 동안 클릭 무시
+    setTimeout(() => {
+      isDragging = false;
+    }, 200);
+  });
+  
+  // 클릭 (드래그 아닐 때만)
+  naver.maps.Event.addListener(marker, 'click', function() {
+    if (!isDragging && (Date.now() - dragStartTime > 200)) {
+      openModal(num);
+    }
   });
   
   markers[num] = marker;
@@ -761,70 +894,164 @@ function toggleRotate() {
   }
 }
 
-// ========== 사이드바 리스트 ==========
+// ========== 구역 분류 ==========
+function getZoneName(road) {
+  const zones = ['노형', '도령', '연동', '성신', '도두', '정존', '수덕', '남녕', '다랑곶', '월랑', '오광', '진군', '은수', '연화', '국기', '과원', '연북', '월광', '달마루', '대동', '오래물', '서해안', '도공', '도리', '우평', '일주서', '제성', '광평동', '원노형'];
+  
+  for (const zone of zones) {
+    if (road.includes(zone)) return zone;
+  }
+  return '기타';
+}
+
+function getZoneColor(zone) {
+  const colors = {
+    '노형': '#e74c3c', '도령': '#e74c3c',
+    '연동': '#3498db', '성신': '#3498db',
+    '도두': '#2ecc71',
+    '정존': '#f39c12',
+    '수덕': '#9b59b6',
+    '남녕': '#1abc9c',
+    '다랑곶': '#e67e22',
+    '월랑': '#34495e',
+    '오광': '#16a085',
+    '진군': '#8e44ad',
+    '은수': '#27ae60',
+    '연화': '#2980b9',
+    '국기': '#c0392b',
+    '과원': '#d35400',
+    '연북': '#7f8c8d',
+    '월광': '#e84393',
+    '달마루': '#6c5ce7',
+    '대동': '#00b894',
+    '오래물': '#fdcb6e'
+  };
+  return colors[zone] || '#95a5a6';
+}
+
+// ==========사이드바 리스트 ==========
 let draggedItem = null;
+let collapsedZones = {};
 
 function renderList() {
   const search = document.getElementById('searchBox').value.toLowerCase();
   const list = document.getElementById('addrList');
   list.innerHTML = '';
   
-  // 배송 순서대로 표시
+  // 구역별로 그룹화
+  const zoneGroups = {};
   deliveryOrder.forEach((num, index) => {
     const a = ADDRESSES.find(x => x.n === num);
     if (!a) return;
     
-    const has = !!pinsData[a.n];
     const text = `${a.n} ${a.road} ${a.detail}`.toLowerCase();
     if (search && !text.includes(search)) return;
     
-    const item = document.createElement('div');
-    item.className = 'addr-item';
-    item.dataset.num = a.n;
-    item.draggable = true;
-    if (has) item.classList.add('done');
-    if (pendingPinNum === a.n) item.classList.add('active');
+    const zone = getZoneName(a.road);
+    if (!zoneGroups[zone]) {
+      zoneGroups[zone] = [];
+    }
+    zoneGroups[zone].push({ addr: a, orderNum: index + 1 });
+  });
+  
+  // 구역별로 렌더링
+  Object.keys(zoneGroups).sort().forEach(zone => {
+    const items = zoneGroups[zone];
+    const zoneColor = getZoneColor(zone);
+    const isCollapsed = collapsedZones[zone];
     
-    const customName = has ? pinsData[a.n].name : '';
-    const showCustom = customName && customName !== a.detail;
+    const zoneDiv = document.createElement('div');
+    zoneDiv.className = 'zone-group';
+    if (isCollapsed) zoneDiv.classList.add('collapsed');
     
-    // 순서 번호는 deliveryOrder의 인덱스 + 1
-    const orderNum = index + 1;
-    
-    item.innerHTML = `
-      <div class="addr-num">${orderNum}</div>
-      <div class="addr-text">
-        <div class="addr-road">${a.road}</div>
-        <div class="addr-detail">${a.detail || '<i style="color:#aaa">세부주소 없음</i>'}</div>
-        ${showCustom ? `<div class="addr-name">📝 ${customName}</div>` : ''}
+    const zoneHeader = document.createElement('div');
+    zoneHeader.className = 'zone-header';
+    zoneHeader.style.background = `linear-gradient(135deg, ${zoneColor} 0%, ${adjustColor(zoneColor, -20)} 100%)`;
+    zoneHeader.innerHTML = `
+      <div class="zone-title">
+        <span>📍 ${zone}</span>
+        <span class="zone-badge">${items.length}건</span>
       </div>
-      <div class="addr-actions">
-        ${has 
-          ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
-             <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
-          : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
-             <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
-        }
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button onclick="event.stopPropagation(); deleteZone('${zone}')" style="background:rgba(255,255,255,0.3); border:none; color:white; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">🗑️</button>
+        <span class="zone-arrow">▼</span>
       </div>
     `;
     
-    // 드래그 이벤트
-    item.addEventListener('dragstart', handleDragStart);
-    item.addEventListener('dragend', handleDragEnd);
-    item.addEventListener('dragover', handleDragOver);
-    item.addEventListener('drop', handleDrop);
-    item.addEventListener('dragleave', handleDragLeave);
-    
-    item.addEventListener('click', () => {
-      if (has) {
-        focusPin(a.n);
-      } else {
-        startPlacing(a.n);
+    zoneHeader.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') {
+        collapsedZones[zone] = !collapsedZones[zone];
+        renderList();
       }
     });
     
-    list.appendChild(item);
+    const zoneItems = document.createElement('div');
+    zoneItems.className = 'zone-items';
+    
+    items.forEach(({ addr: a, orderNum }) => {
+      const has = !!pinsData[a.n];
+      
+      const item = document.createElement('div');
+      item.className = 'addr-item';
+      item.dataset.num = a.n;
+      item.draggable = true;
+      if (has) item.classList.add('done');
+      if (pendingPinNum === a.n) item.classList.add('active');
+      
+      const customName = has ? pinsData[a.n].name : '';
+      const showCustom = customName && customName !== a.detail;
+      
+      item.innerHTML = `
+        <div class="addr-num" style="background:${zoneColor}">${orderNum}</div>
+        <div class="addr-text">
+          <div class="addr-road">${a.road}</div>
+          <div class="addr-detail">${a.detail || '<i style="color:#aaa">세부주소 없음</i>'}</div>
+          ${showCustom ? `<div class="addr-name">📝 ${customName}</div>` : ''}
+        </div>
+        <div class="addr-actions">
+          ${has 
+            ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
+               <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
+            : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
+               <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
+          }
+        </div>
+      `;
+      
+      // 드래그 이벤트
+      item.addEventListener('dragstart', handleDragStart);
+      item.addEventListener('dragend', handleDragEnd);
+      item.addEventListener('dragover', handleDragOver);
+      item.addEventListener('drop', handleDrop);
+      item.addEventListener('dragleave', handleDragLeave);
+      
+      item.addEventListener('click', () => {
+        if (has) {
+          focusPin(a.n);
+        } else {
+          startPlacing(a.n);
+        }
+      });
+      
+      zoneItems.appendChild(item);
+    });
+    
+    zoneDiv.appendChild(zoneHeader);
+    zoneDiv.appendChild(zoneItems);
+    list.appendChild(zoneDiv);
   });
+}
+
+// 색상 밝기 조절 함수
+function adjustColor(color, percent) {
+  const num = parseInt(color.replace("#",""), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = (num >> 16) + amt;
+  const G = (num >> 8 & 0x00FF) + amt;
+  const B = (num & 0x0000FF) + amt;
+  return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 +
+    (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255))
+    .toString(16).slice(1);
 }
 
 function handleDragStart(e) {
@@ -929,6 +1156,33 @@ function deletePin(num) {
   updateStats();
 }
 
+function deleteZone(zoneName) {
+  const zoneAddresses = ADDRESSES.filter(a => getZoneName(a.road) === zoneName);
+  
+  if (!confirm(`${zoneName} 구역 전체(${zoneAddresses.length}건)를 삭제할까요?`)) return;
+  
+  // 해당 구역의 모든 핀 삭제
+  zoneAddresses.forEach(a => {
+    if (markers[a.n]) markers[a.n].setMap(null);
+    delete markers[a.n];
+    delete pinsData[a.n];
+    
+    // ADDRESSES 배열에서 제거
+    const idx = ADDRESSES.findIndex(x => x.n === a.n);
+    if (idx > -1) ADDRESSES.splice(idx, 1);
+    
+    // deliveryOrder에서 제거
+    const orderIdx = deliveryOrder.indexOf(a.n);
+    if (orderIdx > -1) deliveryOrder.splice(orderIdx, 1);
+  });
+  
+  saveData();
+  saveOrder();
+  renderList();
+  updateStats();
+  alert(`✅ ${zoneName} 구역이 삭제되었습니다.`);
+}
+
 // ========== 모드 배너 ==========
 function showModeBanner(text) {
   const b = document.getElementById('modeBanner');
@@ -1000,7 +1254,8 @@ function shareData() {
   const data = {
     pins: pinsData,
     routes: polylines.map(r => r.path),
-    order: deliveryOrder
+    order: deliveryOrder,
+    addresses: ADDRESSES
   };
   
   // JSON을 Base64로 압축
@@ -1025,6 +1280,8 @@ function shareData() {
 }
 
 // 페이지 로드 시 공유 데이터 확인
+let pendingSharedData = null;
+
 function loadSharedData() {
   const urlParams = new URLSearchParams(window.location.search);
   const sharedData = urlParams.get('share');
@@ -1036,58 +1293,15 @@ function loadSharedData() {
       const data = JSON.parse(jsonStr);
       
       if (data.pins && Object.keys(data.pins).length > 0) {
-        // 기존 데이터 확인
-        if (Object.keys(pinsData).length > 0) {
-          if (!confirm(`공유받은 데이터를 불러올까요?\n현재 데이터는 덮어쓰기 됩니다.\n\n공유받은 핀: ${Object.keys(data.pins).length}개`)) {
-            return;
-          }
+        // 비밀번호 확인
+        if (data.password) {
+          pendingSharedData = data;
+          document.getElementById('passwordModal').classList.add('show');
+          document.getElementById('passwordInput').focus();
+        } else {
+          // 비밀번호 없는 구버전 데이터
+          applySharedData(data);
         }
-        
-        // 기존 마커/동선 삭제
-        Object.values(markers).forEach(m => m.setMap(null));
-        markers = {};
-        polylines.forEach(r => r.polyline.setMap(null));
-        polylines = [];
-        
-        // 공유 데이터 적용
-        pinsData = data.pins;
-        
-        // 배송 순서 복원
-        if (data.order) {
-          deliveryOrder = data.order;
-        }
-        
-        // 핀 복원
-        Object.keys(pinsData).forEach(num => {
-          const d = pinsData[num];
-          createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
-        });
-        
-        // 동선 복원
-        if (data.routes && data.routes.length > 0) {
-          data.routes.forEach(pathData => {
-            const path = pathData.map(p => new naver.maps.LatLng(p.lat, p.lng));
-            const polyline = new naver.maps.Polyline({
-              map: map,
-              path: path,
-              strokeColor: '#2c5f8d',
-              strokeWeight: 4,
-              strokeOpacity: 0.8,
-              strokeStyle: 'solid'
-            });
-            polylines.push({ polyline, path: pathData });
-          });
-        }
-        
-        saveData();
-        saveRoutes();
-        renderList();
-        updateStats();
-        
-        alert(`✅ 공유 데이터를 불러왔습니다!\n\n핀: ${Object.keys(data.pins).length}개\n동선: ${data.routes ? data.routes.length : 0}개`);
-        
-        // URL에서 share 파라미터 제거 (깔끔하게)
-        window.history.replaceState({}, document.title, window.location.pathname);
       }
     } catch(err) {
       console.error('공유 데이터 로드 실패:', err);
@@ -1096,14 +1310,102 @@ function loadSharedData() {
   }
 }
 
+function checkPassword() {
+  const input = document.getElementById('passwordInput').value;
+  const error = document.getElementById('passwordError');
+  
+  if (!input || input.length !== 4) {
+    error.textContent = '4자리 숫자를 입력하세요';
+    return;
+  }
+  
+  const correctPassword = atob(pendingSharedData.password);
+  
+  if (input === correctPassword) {
+    // 비밀번호 맞음
+    document.getElementById('passwordModal').classList.remove('show');
+    applySharedData(pendingSharedData);
+    pendingSharedData = null;
+  } else {
+    // 비밀번호 틀림
+    error.textContent = '❌ 비밀번호가 틀렸습니다';
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordInput').focus();
+  }
+}
+
+function applySharedData(data) {
+  // 기존 데이터 확인
+  if (Object.keys(pinsData).length > 0) {
+    if (!confirm(`공유받은 데이터를 불러올까요?\n현재 데이터는 덮어쓰기 됩니다.\n\n공유받은 핀: ${Object.keys(data.pins).length}개`)) {
+      return;
+    }
+  }
+  
+  // 기존 마커/동선 삭제
+  Object.values(markers).forEach(m => m.setMap(null));
+  markers = {};
+  polylines.forEach(r => r.polyline.setMap(null));
+  polylines = [];
+  
+  // 공유 데이터 적용
+  pinsData = data.pins;
+  
+  // 주소 목록 업데이트
+  if (data.addresses) {
+    ADDRESSES = data.addresses;
+  }
+  
+  // 배송 순서 복원
+  if (data.order) {
+    deliveryOrder = data.order;
+  } else {
+    // 순서 정보 없으면 주소 순서대로
+    deliveryOrder = ADDRESSES.map(a => a.n);
+  }
+  
+  // 핀 복원
+  Object.keys(pinsData).forEach(num => {
+    const d = pinsData[num];
+    createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
+  });
+  
+  // 동선 복원
+  if (data.routes && data.routes.length > 0) {
+    data.routes.forEach(pathData => {
+      const path = pathData.map(p => new naver.maps.LatLng(p.lat, p.lng));
+      const polyline = new naver.maps.Polyline({
+        map: map,
+        path: path,
+        strokeColor: '#2c5f8d',
+        strokeWeight: 4,
+        strokeOpacity: 0.8,
+        strokeStyle: 'solid'
+      });
+      polylines.push({ polyline, path: pathData });
+    });
+  }
+  
+  saveData();
+  saveRoutes();
+  renderList();
+  updateStats();
+  
+  alert(`✅ 공유 데이터를 불러왔습니다!\n\n핀: ${Object.keys(data.pins).length}개\n동선: ${data.routes ? data.routes.length : 0}개`);
+  
+  // URL에서 share 파라미터 제거 (깔끔하게)
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 // ========== 내보내기/불러오기 ==========
 function exportData() {
   const data = {
-    version: 4,
+    version: 5,
     exported_at: new Date().toISOString(),
     pins: pinsData,
     routes: polylines.map(r => r.path),
-    order: deliveryOrder
+    order: deliveryOrder,
+    addresses: ADDRESSES
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -1131,9 +1433,16 @@ function importData(file) {
       // 새 데이터 적용
       pinsData = data.pins;
       
+      // 주소 목록 복원
+      if (data.addresses) {
+        ADDRESSES = data.addresses;
+      }
+      
       // 배송 순서 복원
       if (data.order) {
         deliveryOrder = data.order;
+      } else {
+        deliveryOrder = ADDRESSES.map(a => a.n);
       }
       
       Object.keys(pinsData).forEach(num => {
@@ -1170,7 +1479,7 @@ function importData(file) {
 }
 
 function clearAll() {
-  if (!confirm('모든 핀과 동선을 삭제할까요?\n(JSON 백업 후 진행 권장)')) return;
+  if (!confirm('모든 핀과 동선, 주소 목록을 삭제할까요?\n(JSON 백업 후 진행 권장)')) return;
   if (!confirm('정말로 모두 삭제합니다. 되돌릴 수 없습니다.')) return;
   
   Object.values(markers).forEach(m => m.setMap(null));
@@ -1179,12 +1488,18 @@ function clearAll() {
   polylines = [];
   pinsData = {};
   newPinCounter = 1;
-  deliveryOrder = ADDRESSES.map(a => a.n);  // 순서 초기화
+  
+  // 주소 목록 완전 삭제
+  ADDRESSES = [];
+  deliveryOrder = [];
+  
   saveData();
   saveRoutes();
   saveOrder();
   renderList();
   updateStats();
+  
+  alert('✅ 초기화 완료! 새로운 배송지를 추가하려면 배송 허브에서 CSV를 업로드하세요.');
 }
 
 // ========== 주소 검색 (지도 이동) ==========
@@ -1280,6 +1595,18 @@ document.getElementById('btnExport').addEventListener('click', exportData);
 
 document.getElementById('btnShare').addEventListener('click', shareData);
 
+// 초기화 메뉴 토글
+document.getElementById('btnClearMenu').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const dropdown = document.getElementById('clearDropdown');
+  dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+});
+
+// 외부 클릭 시 드롭다운 닫기
+document.addEventListener('click', () => {
+  document.getElementById('clearDropdown').style.display = 'none';
+});
+
 document.getElementById('btnImport').addEventListener('click', () => {
   document.getElementById('fileInput').click();
 });
@@ -1333,6 +1660,11 @@ document.addEventListener('keydown', (e) => {
     } else if (document.getElementById('modal').classList.contains('show')) {
       closeModal();
     }
+  }
+  
+  // 비밀번호 입력창에서 엔터
+  if (e.key === 'Enter' && document.getElementById('passwordModal').classList.contains('show')) {
+    checkPassword();
   }
 });
 
