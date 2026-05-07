@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>배송 허브 - 관리자</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { 
+    font-family: 'Malgun Gothic', sans-serif; 
+    background: #f5f5f5;
+    padding: 20px;
+  }
+  
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  
+  .header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    text-align: center;
+  }
+  
+  .header h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  
+  .header p {
+    opacity: 0.9;
+    font-size: 14px;
+  }
+  
+  .content {
+    padding: 30px;
+  }
+  
+  .step {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+  }
+  
+  .step-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .step-number {
+    background: #667eea;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  
+  .upload-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  
+  .upload-zone:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+  }
+  
+  .upload-zone.dragover {
+    border-color: #667eea;
+    background: #f0f2ff;
+  }
+  
+  .btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s;
+  }
+  
+  .btn-primary {
+    background: #667eea;
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background: #5568d3;
+  }
+  
+  .btn-success {
+    background: #51cf66;
+    color: white;
+  }
+  
+  .btn-success:hover {
+    background: #40c057;
+  }
+  
+  .btn-danger {
+    background: #ff6b6b;
+    color: white;
+  }
+  
+  .progress-bar {
+    width: 100%;
+    height: 30px;
+    background: #e9ecef;
+    border-radius: 15px;
+    overflow: hidden;
+    margin: 20px 0;
+    display: none;
+  }
+  
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    transition: width 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  
+  #preview {
+    margin-top: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+  }
+  
+  th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+  }
+  
+  .zone-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: white;
+  }
+  
+  .status {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    display: none;
+  }
+  
+  .status.success {
+    background: #d3f9d8;
+    color: #2b8a3e;
+    border: 1px solid #8ce99a;
+  }
+  
+  .status.error {
+    background: #ffe3e3;
+    color: #c92a2a;
+    border: 1px solid #ffa8a8;
+  }
+  
+  .status.info {
+    background: #d0ebff;
+    color: #1864ab;
+    border: 1px solid #74c0fc;
+  }
+  
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  
+  input[type="file"] {
+    display: none;
+  }
+  
+  .zone-colors {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+  }
+  
+  .zone-color {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+  }
+  
+  .color-box {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🚚 배송 허브</h1>
+    <p>CSV 일괄 등록 및 자동 핀 생성 시스템</p>
+  </div>
+  
+  <div class="content">
+    
+    <!-- 1단계: CSV 업로드 -->
+    <div class="step">
+      <div class="step-title">
+        <span class="step-number">1</span>
+        CSV 파일 업로드
+      </div>
+      
+      <div class="upload-zone" id="uploadZone">
+        <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
+        <div style="font-size: 16px; margin-bottom: 5px;">클릭 또는 파일을 드래그하세요</div>
+        <div style="font-size: 12px; color: #868e96;">CSV 형식: 순번, 도로명주소, 세부주소</div>
+      </div>
+      
+      <input type="file" id="fileInput" accept=".csv,.txt">
+      
+      <div id="preview"></div>
+    </div>
+    
+    <!-- 2단계: 구역 설정 -->
+    <div class="step" id="step2" style="display:none;">
+      <div class="step-title">
+        <span class="step-number">2</span>
+        구역별 색상 설정
+      </div>
+      
+      <div class="zone-colors" id="zoneColors"></div>
+      
+      <div style="margin-top: 20px; font-size: 13px; color: #868e96;">
+        💡 도로명 기반으로 자동 분류됩니다. 색상은 자유롭게 변경 가능합니다.
+      </div>
+    </div>
+    
+    <!-- 3단계: 자동 검색 -->
+    <div class="step" id="step3" style="display:none;">
+      <div class="step-title">
+        <span class="step-number">3</span>
+        자동 주소 검색 및 핀 생성
+      </div>
+      
+      <button class="btn btn-primary" id="btnAutoSearch">
+        🔍 전체 주소 자동 검색 시작
+      </button>
+      
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill">0%</div>
+      </div>
+      
+      <div class="status" id="status"></div>
+    </div>
+    
+    <!-- 4단계: 내보내기 -->
+    <div class="step" id="step4" style="display:none;">
+      <div class="step-title">
+        <span class="step-number">4</span>
+        배송 지도로 내보내기
+      </div>
+      
+      <div class="actions">
+        <button class="btn btn-success" id="btnExport">
+          🔗 공유 링크 생성
+        </button>
+        <button class="btn btn-primary" id="btnDownload">
+          📥 JSON 다운로드
+        </button>
+        <button class="btn btn-primary" id="btnOpenMap">
+          🗺️ 배송 지도 열기
+        </button>
+      </div>
+      
+      <div class="status info" id="exportStatus" style="display:block; margin-top:15px;">
+        ℹ️ 생성된 데이터를 배송 지도 앱으로 보낼 수 있습니다.
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=svwz8aul2j&submodules=geocoder"></script>
+
+<script>
+// ========== 상태 ==========
+let addressData = [];
+let pinsData = {};
+let zoneColors = {};
+
+// ========== 구역 색상 매핑 ==========
+const ZONE_COLORS = {
+  '노형': '#e74c3c',
+  '도령': '#e74c3c',
+  '연동': '#3498db',
+  '성신': '#3498db',
+  '도두': '#2ecc71',
+  '정존': '#f39c12',
+  '수덕': '#9b59b6',
+  '남녕': '#1abc9c',
+  '다랑곶': '#e67e22',
+  '월랑': '#34495e',
+  '오광': '#16a085',
+  '진군': '#8e44ad',
+  '은수': '#27ae60',
+  '연화': '#2980b9',
+  '국기': '#c0392b',
+  '과원': '#d35400',
+  '연북': '#7f8c8d',
+  '월광': '#e84393',
+  '달마루': '#6c5ce7',
+  '대동': '#00b894',
+  '오래물': '#fdcb6e'
+};
+
+// ========== 파일 업로드 ==========
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+  uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    parseCSV(text);
+  };
+  reader.readAsText(file, 'EUC-KR'); // 한글 인코딩
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  addressData = [];
+  
+  lines.forEach((line, index) => {
+    if (index === 0 && line.includes('순번')) return; // 헤더 스킵
+    
+    const parts = line.split(',');
+    if (parts.length >= 2) {
+      addressData.push({
+        n: addressData.length + 1,
+        road: parts[1]?.trim() || '',
+        detail: parts[2]?.trim() || ''
+      });
+    }
+  });
+  
+  if (addressData.length > 0) {
+    showPreview();
+    analyzeZones();
+    document.getElementById('step2').style.display = 'block';
+    document.getElementById('step3').style.display = 'block';
+  } else {
+    alert('CSV 파일을 읽을 수 없습니다.');
+  }
+}
+
+function showPreview() {
+  const preview = document.getElementById('preview');
+  let html = `
+    <div style="margin-top:20px; padding:15px; background:#d3f9d8; border-radius:8px; color:#2b8a3e;">
+      ✅ ${addressData.length}개 주소를 성공적으로 불러왔습니다!
+    </div>
+    <table style="margin-top:20px;">
+      <thead>
+        <tr>
+          <th>순번</th>
+          <th>도로명주소</th>
+          <th>세부주소</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  addressData.slice(0, 10).forEach(a => {
+    html += `
+      <tr>
+        <td>${a.n}</td>
+        <td>${a.road}</td>
+        <td>${a.detail}</td>
+      </tr>
+    `;
+  });
+  
+  if (addressData.length > 10) {
+    html += `<tr><td colspan="3" style="text-align:center; color:#868e96;">... 외 ${addressData.length - 10}건</td></tr>`;
+  }
+  
+  html += '</tbody></table>';
+  preview.innerHTML = html;
+}
+
+function analyzeZones() {
+  const zones = {};
+  
+  addressData.forEach(a => {
+    const zoneName = getZoneName(a.road);
+    if (!zones[zoneName]) zones[zoneName] = 0;
+    zones[zoneName]++;
+  });
+  
+  const zoneColorsDiv = document.getElementById('zoneColors');
+  zoneColorsDiv.innerHTML = '';
+  
+  Object.keys(zones).forEach(zone => {
+    const color = ZONE_COLORS[zone] || '#95a5a6';
+    zoneColors[zone] = color;
+    
+    const div = document.createElement('div');
+    div.className = 'zone-color';
+    div.innerHTML = `
+      <div class="color-box" style="background:${color}"></div>
+      <span><strong>${zone}</strong> ${zones[zone]}건</span>
+    `;
+    zoneColorsDiv.appendChild(div);
+  });
+}
+
+function getZoneName(road) {
+  for (const zone in ZONE_COLORS) {
+    if (road.includes(zone)) return zone;
+  }
+  return '기타';
+}
+
+// ========== 자동 검색 ==========
+document.getElementById('btnAutoSearch').addEventListener('click', startAutoSearch);
+
+async function startAutoSearch() {
+  if (addressData.length === 0) {
+    alert('먼저 CSV 파일을 업로드하세요.');
+    return;
+  }
+  
+  document.getElementById('btnAutoSearch').disabled = true;
+  document.getElementById('progressBar').style.display = 'block';
+  
+  const status = document.getElementById('status');
+  status.className = 'status info';
+  status.style.display = 'block';
+  status.textContent = '🔍 주소 검색 중...';
+  
+  for (let i = 0; i < addressData.length; i++) {
+    const addr = addressData[i];
+    const progress = Math.round(((i + 1) / addressData.length) * 100);
+    
+    document.getElementById('progressFill').style.width = progress + '%';
+    document.getElementById('progressFill').textContent = `${i + 1}/${addressData.length} (${progress}%)`;
+    
+    status.textContent = `🔍 ${i + 1}/${addressData.length} - ${addr.road} 검색 중...`;
+    
+    try {
+      const coords = await searchAddress(addr.road);
+      if (coords) {
+        const zone = getZoneName(addr.road);
+        pinsData[addr.n] = {
+          lat: coords.lat,
+          lng: coords.lng,
+          name: addr.detail,
+          memo: '',
+          zone: zone,
+          color: zoneColors[zone] || '#95a5a6'
+        };
+      }
+    } catch (err) {
+      console.error(`${addr.road} 검색 실패:`, err);
+    }
+    
+    // 네이버 API 부하 방지
+    await sleep(200);
+  }
+  
+  status.className = 'status success';
+  status.textContent = `✅ 완료! ${Object.keys(pinsData).length}/${addressData.length}개 핀이 생성되었습니다.`;
+  
+  document.getElementById('step4').style.display = 'block';
+}
+
+function searchAddress(road) {
+  return new Promise((resolve, reject) => {
+    const fullAddress = `제주특별자치도 제주시 ${road}`;
+    
+    naver.maps.Service.geocode({ query: fullAddress }, (status, response) => {
+      if (status === naver.maps.Service.Status.OK && response.v2.addresses[0]) {
+        const result = response.v2.addresses[0];
+        resolve({ lat: parseFloat(result.y), lng: parseFloat(result.x) });
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ========== 내보내기 ==========
+document.getElementById('btnExport').addEventListener('click', () => {
+  const data = {
+    pins: pinsData,
+    routes: [],
+    order: Object.keys(pinsData).map(Number)
+  };
+  
+  const jsonStr = JSON.stringify(data);
+  const compressed = btoa(encodeURIComponent(jsonStr));
+  const shareUrl = `https://veracityman1-commits.github.io/delivery-route/?share=${compressed}`;
+  
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      alert('✅ 공유 링크가 복사되었습니다!\n\n배송 지도 앱에서 이 링크를 열면 모든 핀이 자동으로 나타납니다.');
+    });
+  } else {
+    prompt('이 링크를 복사하세요:', shareUrl);
+  }
+});
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  const data = {
+    version: 4,
+    exported_at: new Date().toISOString(),
+    pins: pinsData,
+    routes: [],
+    order: Object.keys(pinsData).map(Number)
+  };
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `배송데이터_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnOpenMap').addEventListener('click', () => {
+  window.open('https://veracityman1-commits.github.io/delivery-route/', '_blank');
+});
+</script>
+
+</body>
+</html>
