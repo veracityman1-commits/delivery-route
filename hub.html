@@ -269,7 +269,16 @@
         <ol style="margin:10px 0 0 20px; line-height:1.8;">
           <li>위 버튼 클릭 → 클로드 새 대화 열림</li>
           <li>PDF 파일 드래그 업로드</li>
-          <li>"이 PDF를 순번, 도로명주소, 세부주소 형식의 CSV로 변환해줘" 입력</li>
+          <li>아래 텍스트 복사해서 입력:</li>
+        </ol>
+        <div style="background:#f8f9fa; padding:12px; border-radius:4px; margin:10px 0; font-family:monospace; font-size:12px; border-left:3px solid #667eea;">
+          이 PDF를 CSV로 변환해줘.<br>
+          형식: 순번, 도로명주소, 세부주소, 참고사항, 품명, 수량<br>
+          - 참고사항: 괄호 안 내용<br>
+          - 품명: 제품명<br>
+          - 수량: 숫자만
+        </div>
+        <ol start="4" style="margin:10px 0 0 20px; line-height:1.8;">
           <li>생성된 CSV 파일 다운로드</li>
           <li>아래 1단계에서 CSV 업로드</li>
         </ol>
@@ -447,7 +456,10 @@ function parseCSV(text) {
       addressData.push({
         n: addressData.length + 1,
         road: parts[1]?.trim() || '',
-        detail: parts[2]?.trim() || ''
+        detail: parts[2]?.trim() || '',
+        memo: parts[3]?.trim() || '',      // 참고사항
+        product: parts[4]?.trim() || '',   // 품명
+        quantity: parts[5]?.trim() || ''   // 수량
       });
     }
   });
@@ -474,6 +486,9 @@ function showPreview() {
           <th>순번</th>
           <th>도로명주소</th>
           <th>세부주소</th>
+          <th>참고사항</th>
+          <th>품명</th>
+          <th>수량</th>
         </tr>
       </thead>
       <tbody>
@@ -485,12 +500,15 @@ function showPreview() {
         <td>${a.n}</td>
         <td>${a.road}</td>
         <td>${a.detail}</td>
+        <td>${a.memo || '-'}</td>
+        <td>${a.product || '-'}</td>
+        <td>${a.quantity || '-'}</td>
       </tr>
     `;
   });
   
   if (addressData.length > 10) {
-    html += `<tr><td colspan="3" style="text-align:center; color:#868e96;">... 외 ${addressData.length - 10}건</td></tr>`;
+    html += `<tr><td colspan="6" style="text-align:center; color:#868e96;">... 외 ${addressData.length - 10}건</td></tr>`;
   }
   
   html += '</tbody></table>';
@@ -577,11 +595,18 @@ async function startAutoSearch() {
       const coords = await searchAddress(addr.road);
       if (coords) {
         const zone = getZoneName(addr.road);
+        
+        // 메모 자동 생성
+        let memoText = '';
+        if (addr.memo) memoText += `참고: ${addr.memo}\n`;
+        if (addr.product) memoText += `품명: ${addr.product}\n`;
+        if (addr.quantity) memoText += `수량: ${addr.quantity}`;
+        
         pinsData[addr.n] = {
           lat: coords.lat,
           lng: coords.lng,
           name: addr.detail,
-          memo: '',
+          memo: memoText.trim(),
           zone: zone,
           color: zoneColors[zone] || '#95a5a6'
         };
