@@ -894,7 +894,126 @@ function toggleRotate() {
   }
 }
 
-// ========== 구역 분류 ==========
+// ========== 사이드바 리스트 ==========
+let draggedItem = null;
+let collapsedZones = {};
+
+function renderList() {
+  const search = document.getElementById('searchBox').value.toLowerCase();
+  const list = document.getElementById('addrList');
+  list.innerHTML = '';
+  
+  // 구역별로 그룹화
+  const groups = {};
+  deliveryOrder.forEach((num, index) => {
+    const a = ADDRESSES.find(x => x.n === num);
+    if (!a) return;
+    
+    const text = `${a.n} ${a.road} ${a.detail}`.toLowerCase();
+    if (search && !text.includes(search)) return;
+    
+    // 구역명 가져오기 (공유 데이터에서 로드됨)
+    const zone = a.zoneName || '기본 구역';
+    if (!groups[zone]) {
+      groups[zone] = [];
+    }
+    groups[zone].push({ addr: a, orderIndex: index + 1 });
+  });
+  
+  // 구역별로 렌더링
+  Object.keys(groups).forEach(zoneName => {
+    const items = groups[zoneName];
+    const isCollapsed = collapsedZones[zoneName];
+    
+    // 구역 헤더
+    const zoneHeader = document.createElement('div');
+    zoneHeader.className = 'zone-header' + (isCollapsed ? ' collapsed' : '');
+    zoneHeader.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 15px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    `;
+    
+    zoneHeader.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span>📁 ${zoneName}</span>
+        <span style="background:rgba(255,255,255,0.3); padding:3px 8px; border-radius:12px; font-size:11px;">${items.length}건</span>
+      </div>
+      <span style="font-size:12px;">${isCollapsed ? '▶' : '▼'}</span>
+    `;
+    
+    zoneHeader.addEventListener('click', () => {
+      collapsedZones[zoneName] = !collapsedZones[zoneName];
+      renderList();
+    });
+    
+    list.appendChild(zoneHeader);
+    
+    // 구역 아이템들
+    if (!isCollapsed) {
+      items.forEach(({ addr: a, orderIndex }) => {
+        const has = !!pinsData[a.n];
+        
+        // 구역 색상
+        const zone = getZoneName(a.road);
+        const zoneColor = getZoneColor(zone);
+        
+        const item = document.createElement('div');
+        item.className = 'addr-item';
+        item.dataset.num = a.n;
+        item.draggable = true;
+        if (has) item.classList.add('done');
+        if (pendingPinNum === a.n) item.classList.add('active');
+        
+        const customName = has ? pinsData[a.n].name : '';
+        const showCustom = customName && customName !== a.detail;
+        
+        item.innerHTML = `
+          <div class="addr-num" style="background:${zoneColor}">${orderIndex}</div>
+          <div class="addr-text">
+            <div class="addr-road">${a.road}</div>
+            <div class="addr-detail">${a.detail || '<i style="color:#aaa">세부주소 없음</i>'}</div>
+            ${showCustom ? `<div class="addr-name">📝 ${customName}</div>` : ''}
+          </div>
+          <div class="addr-actions">
+            ${has 
+              ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
+                 <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
+              : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
+                 <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
+            }
+          </div>
+        `;
+        
+        // 드래그 이벤트
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+        item.addEventListener('dragover', handleDragOver);
+        item.addEventListener('drop', handleDrop);
+        item.addEventListener('dragleave', handleDragLeave);
+        
+        item.addEventListener('click', () => {
+          if (has) {
+            focusPin(a.n);
+          } else {
+            startPlacing(a.n);
+          }
+        });
+        
+        list.appendChild(item);
+      });
+    }
+  });
+}
+
 function getZoneName(road) {
   const zones = ['노형', '도령', '연동', '성신', '도두', '정존', '수덕', '남녕', '다랑곶', '월랑', '오광', '진군', '은수', '연화', '국기', '과원', '연북', '월광', '달마루', '대동', '오래물', '서해안', '도공', '도리', '우평', '일주서', '제성', '광평동', '원노형'];
   
@@ -927,131 +1046,6 @@ function getZoneColor(zone) {
     '오래물': '#fdcb6e'
   };
   return colors[zone] || '#95a5a6';
-}
-
-// ==========사이드바 리스트 ==========
-let draggedItem = null;
-let collapsedZones = {};
-
-function renderList() {
-  const search = document.getElementById('searchBox').value.toLowerCase();
-  const list = document.getElementById('addrList');
-  list.innerHTML = '';
-  
-  // 구역별로 그룹화
-  const zoneGroups = {};
-  deliveryOrder.forEach((num, index) => {
-    const a = ADDRESSES.find(x => x.n === num);
-    if (!a) return;
-    
-    const text = `${a.n} ${a.road} ${a.detail}`.toLowerCase();
-    if (search && !text.includes(search)) return;
-    
-    const zone = getZoneName(a.road);
-    if (!zoneGroups[zone]) {
-      zoneGroups[zone] = [];
-    }
-    zoneGroups[zone].push({ addr: a, orderNum: index + 1 });
-  });
-  
-  // 구역별로 렌더링
-  Object.keys(zoneGroups).sort().forEach(zone => {
-    const items = zoneGroups[zone];
-    const zoneColor = getZoneColor(zone);
-    const isCollapsed = collapsedZones[zone];
-    
-    const zoneDiv = document.createElement('div');
-    zoneDiv.className = 'zone-group';
-    if (isCollapsed) zoneDiv.classList.add('collapsed');
-    
-    const zoneHeader = document.createElement('div');
-    zoneHeader.className = 'zone-header';
-    zoneHeader.style.background = `linear-gradient(135deg, ${zoneColor} 0%, ${adjustColor(zoneColor, -20)} 100%)`;
-    zoneHeader.innerHTML = `
-      <div class="zone-title">
-        <span>📍 ${zone}</span>
-        <span class="zone-badge">${items.length}건</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <button onclick="event.stopPropagation(); deleteZone('${zone}')" style="background:rgba(255,255,255,0.3); border:none; color:white; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">🗑️</button>
-        <span class="zone-arrow">▼</span>
-      </div>
-    `;
-    
-    zoneHeader.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'BUTTON') {
-        collapsedZones[zone] = !collapsedZones[zone];
-        renderList();
-      }
-    });
-    
-    const zoneItems = document.createElement('div');
-    zoneItems.className = 'zone-items';
-    
-    items.forEach(({ addr: a, orderNum }) => {
-      const has = !!pinsData[a.n];
-      
-      const item = document.createElement('div');
-      item.className = 'addr-item';
-      item.dataset.num = a.n;
-      item.draggable = true;
-      if (has) item.classList.add('done');
-      if (pendingPinNum === a.n) item.classList.add('active');
-      
-      const customName = has ? pinsData[a.n].name : '';
-      const showCustom = customName && customName !== a.detail;
-      
-      item.innerHTML = `
-        <div class="addr-num" style="background:${zoneColor}">${orderNum}</div>
-        <div class="addr-text">
-          <div class="addr-road">${a.road}</div>
-          <div class="addr-detail">${a.detail || '<i style="color:#aaa">세부주소 없음</i>'}</div>
-          ${showCustom ? `<div class="addr-name">📝 ${customName}</div>` : ''}
-        </div>
-        <div class="addr-actions">
-          ${has 
-            ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
-               <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
-            : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
-               <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
-          }
-        </div>
-      `;
-      
-      // 드래그 이벤트
-      item.addEventListener('dragstart', handleDragStart);
-      item.addEventListener('dragend', handleDragEnd);
-      item.addEventListener('dragover', handleDragOver);
-      item.addEventListener('drop', handleDrop);
-      item.addEventListener('dragleave', handleDragLeave);
-      
-      item.addEventListener('click', () => {
-        if (has) {
-          focusPin(a.n);
-        } else {
-          startPlacing(a.n);
-        }
-      });
-      
-      zoneItems.appendChild(item);
-    });
-    
-    zoneDiv.appendChild(zoneHeader);
-    zoneDiv.appendChild(zoneItems);
-    list.appendChild(zoneDiv);
-  });
-}
-
-// 색상 밝기 조절 함수
-function adjustColor(color, percent) {
-  const num = parseInt(color.replace("#",""), 16);
-  const amt = Math.round(2.55 * percent);
-  const R = (num >> 16) + amt;
-  const G = (num >> 8 & 0x00FF) + amt;
-  const B = (num & 0x0000FF) + amt;
-  return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 +
-    (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255))
-    .toString(16).slice(1);
 }
 
 function handleDragStart(e) {
@@ -1354,6 +1348,11 @@ function applySharedData(data) {
   // 주소 목록 업데이트
   if (data.addresses) {
     ADDRESSES = data.addresses;
+    // zoneName을 각 주소에 할당
+    const zoneName = data.zoneName || '기본 구역';
+    ADDRESSES.forEach(a => {
+      a.zoneName = zoneName;
+    });
   }
   
   // 배송 순서 복원

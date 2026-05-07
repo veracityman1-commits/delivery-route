@@ -326,7 +326,18 @@
     <div class="step" id="step3" style="display:none;">
       <div class="step-title">
         <span class="step-number">3</span>
-        비밀번호 설정 및 자동 검색
+        구역명 설정 및 자동 검색
+      </div>
+      
+      <div style="margin-bottom:20px;">
+        <label style="display:block; margin-bottom:8px; font-weight:600; color:#333;">
+          📍 배송 구역명
+        </label>
+        <input type="text" id="zoneName" placeholder="예: 노형, 중앙로, 오라 등" 
+               style="width:100%; max-width:400px; padding:12px; border:2px solid #667eea; border-radius:6px; font-size:14px;">
+        <div style="margin-top:8px; font-size:13px; color:#666;">
+          💡 지도에서 이 이름으로 그룹 표시됩니다. (예: 📁 노형 76건)
+        </div>
       </div>
       
       <div style="margin-bottom:20px;">
@@ -576,6 +587,13 @@ async function startAutoSearch() {
     return;
   }
   
+  const zoneName = document.getElementById('zoneName').value.trim();
+  if (!zoneName) {
+    alert('배송 구역명을 입력해주세요. (예: 노형, 중앙로, 오라)');
+    document.getElementById('zoneName').focus();
+    return;
+  }
+  
   document.getElementById('btnAutoSearch').disabled = true;
   document.getElementById('progressBar').style.display = 'block';
   
@@ -648,6 +666,13 @@ function sleep(ms) {
 // ========== 내보내기 ==========
 document.getElementById('btnExport').addEventListener('click', () => {
   const password = document.getElementById('sharePassword').value.trim();
+  const zoneName = document.getElementById('zoneName').value.trim();
+  
+  if (!zoneName) {
+    alert('⚠️ 배송 구역명을 입력하세요!');
+    document.getElementById('zoneName').focus();
+    return;
+  }
   
   if (!password) {
     alert('⚠️ 비밀번호를 입력하세요!');
@@ -666,6 +691,7 @@ document.getElementById('btnExport').addEventListener('click', () => {
     routes: [],
     order: Object.keys(pinsData).map(Number),
     addresses: addressData,
+    zoneName: zoneName, // 구역명 추가
     password: btoa(password) // Base64 인코딩
   };
   
@@ -675,7 +701,7 @@ document.getElementById('btnExport').addEventListener('click', () => {
   
   if (navigator.clipboard) {
     navigator.clipboard.writeText(shareUrl).then(() => {
-      alert('✅ 공유 링크가 복사되었습니다!\n\n배송 지도 앱에서 이 링크를 열면 모든 핀이 자동으로 나타납니다.');
+      alert(`✅ 공유 링크가 복사되었습니다!\n\n📍 구역: ${zoneName}\n🔐 비밀번호: ${password}\n\n배송 지도 앱에서 이 링크를 열면 모든 핀이 자동으로 나타납니다.`);
     });
   } else {
     prompt('이 링크를 복사하세요:', shareUrl);
