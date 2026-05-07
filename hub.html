@@ -273,10 +273,15 @@
         </ol>
         <div style="background:#f8f9fa; padding:12px; border-radius:4px; margin:10px 0; font-family:monospace; font-size:12px; border-left:3px solid #667eea;">
           이 PDF를 CSV로 변환해줘.<br>
-          형식: 순번, 도로명주소, 세부주소, 참고사항, 품명, 수량<br>
+          형식: 순번, 도로명주소, 세부주소, 참고사항, 품목<br>
+          <br>
+          중요 규칙:<br>
+          1. 각 배송지는 선으로 구분되어 있음<br>
+          2. 한 배송지에 여러 품목이 있으면 한 행으로 합치기<br>
+          3. 품목: "건국 소 1 / 오메가수 소 2" 형식<br>
+          <br>
           - 참고사항: 괄호 안 내용<br>
-          - 품명: 제품명<br>
-          - 수량: 숫자만
+          - 품목: 제품명과 수량을 "/" 로 구분
         </div>
         <ol start="4" style="margin:10px 0 0 20px; line-height:1.8;">
           <li>생성된 CSV 파일 다운로드</li>
@@ -458,8 +463,7 @@ function parseCSV(text) {
         road: parts[1]?.trim() || '',
         detail: parts[2]?.trim() || '',
         memo: parts[3]?.trim() || '',      // 참고사항
-        product: parts[4]?.trim() || '',   // 품명
-        quantity: parts[5]?.trim() || ''   // 수량
+        product: parts[4]?.trim() || ''    // 품목
       });
     }
   });
@@ -487,8 +491,7 @@ function showPreview() {
           <th>도로명주소</th>
           <th>세부주소</th>
           <th>참고사항</th>
-          <th>품명</th>
-          <th>수량</th>
+          <th>품목</th>
         </tr>
       </thead>
       <tbody>
@@ -502,13 +505,12 @@ function showPreview() {
         <td>${a.detail}</td>
         <td>${a.memo || '-'}</td>
         <td>${a.product || '-'}</td>
-        <td>${a.quantity || '-'}</td>
       </tr>
     `;
   });
   
   if (addressData.length > 10) {
-    html += `<tr><td colspan="6" style="text-align:center; color:#868e96;">... 외 ${addressData.length - 10}건</td></tr>`;
+    html += `<tr><td colspan="5" style="text-align:center; color:#868e96;">... 외 ${addressData.length - 10}건</td></tr>`;
   }
   
   html += '</tbody></table>';
@@ -599,8 +601,7 @@ async function startAutoSearch() {
         // 메모 자동 생성
         let memoText = '';
         if (addr.memo) memoText += `참고: ${addr.memo}\n`;
-        if (addr.product) memoText += `품명: ${addr.product}\n`;
-        if (addr.quantity) memoText += `수량: ${addr.quantity}`;
+        if (addr.product) memoText += `품목: ${addr.product}`;
         
         pinsData[addr.n] = {
           lat: coords.lat,
