@@ -446,7 +446,7 @@ function handleFile(file) {
     const text = e.target.result;
     parseCSV(text);
   };
-  reader.readAsText(file, 'EUC-KR'); // 한글 인코딩
+  reader.readAsText(file, 'UTF-8'); // UTF-8로 읽기
 }
 
 function parseCSV(text) {
