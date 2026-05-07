@@ -79,10 +79,13 @@
     cursor: pointer; font-size: 12px; line-height: 1.4;
     display: flex; align-items: center; gap: 8px;
     transition: all 0.15s;
+    user-select: none;
   }
   .addr-item:hover { background: #f0f7ff; border-color: #2c5f8d; }
   .addr-item.active { background: #fff3cd; border-color: #f0ad4e; }
   .addr-item.done { background: #f0fff0; border-color: #5cb85c; }
+  .addr-item.dragging { opacity: 0.5; cursor: grabbing; }
+  .addr-item.drag-over { border-top: 3px solid #2196f3; }
   
   .addr-num {
     background: #6c757d; color: white;
@@ -364,6 +367,7 @@ const ADDRESSES = [
 ];
 
 const STORAGE_KEY = 'nohyeong_delivery_v1';
+const ORDER_KEY = 'nohyeong_order_v1';
 
 // ========== 상태 ==========
 let map;
@@ -373,6 +377,9 @@ let polylines = [];     // 그려진 동선들 (배열)
 let pendingPinNum = null;  // 핀 찍기 대기 중인 번호
 let editingPinNum = null;  // 모달에서 편집 중인 번호
 let newPinCounter = 1;  // 신규 핀 번호 (N1, N2, ...)
+
+// 배송 순서 (사용자가 정한 순서)
+let deliveryOrder = ADDRESSES.map(a => a.n);  // 기본: [1, 2, 3, ..., 76]
 
 // 동선 그리기 모드
 let isDrawingRoute = false;
@@ -399,6 +406,20 @@ function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) pinsData = JSON.parse(raw);
   } catch(e) { console.error('복원 실패', e); pinsData = {}; }
+  
+  // 배송 순서 복원
+  try {
+    const orderRaw = localStorage.getItem(ORDER_KEY);
+    if (orderRaw) {
+      deliveryOrder = JSON.parse(orderRaw);
+    }
+  } catch(e) { console.error('순서 복원 실패', e); }
+}
+
+function saveOrder() {
+  try {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(deliveryOrder));
+  } catch(e) { console.error('순서 저장 실패', e); }
 }
 
 // ========== 지도 초기화 ==========
@@ -740,27 +761,38 @@ function toggleRotate() {
   }
 }
 
-// ==========사이드바 리스트 ==========
+// ========== 사이드바 리스트 ==========
+let draggedItem = null;
+
 function renderList() {
   const search = document.getElementById('searchBox').value.toLowerCase();
   const list = document.getElementById('addrList');
   list.innerHTML = '';
   
-  ADDRESSES.forEach(a => {
+  // 배송 순서대로 표시
+  deliveryOrder.forEach((num, index) => {
+    const a = ADDRESSES.find(x => x.n === num);
+    if (!a) return;
+    
     const has = !!pinsData[a.n];
     const text = `${a.n} ${a.road} ${a.detail}`.toLowerCase();
     if (search && !text.includes(search)) return;
     
     const item = document.createElement('div');
     item.className = 'addr-item';
+    item.dataset.num = a.n;
+    item.draggable = true;
     if (has) item.classList.add('done');
     if (pendingPinNum === a.n) item.classList.add('active');
     
     const customName = has ? pinsData[a.n].name : '';
     const showCustom = customName && customName !== a.detail;
     
+    // 순서 번호는 deliveryOrder의 인덱스 + 1
+    const orderNum = index + 1;
+    
     item.innerHTML = `
-      <div class="addr-num">${a.n}</div>
+      <div class="addr-num">${orderNum}</div>
       <div class="addr-text">
         <div class="addr-road">${a.road}</div>
         <div class="addr-detail">${a.detail || '<i style="color:#aaa">세부주소 없음</i>'}</div>
@@ -776,6 +808,13 @@ function renderList() {
       </div>
     `;
     
+    // 드래그 이벤트
+    item.addEventListener('dragstart', handleDragStart);
+    item.addEventListener('dragend', handleDragEnd);
+    item.addEventListener('dragover', handleDragOver);
+    item.addEventListener('drop', handleDrop);
+    item.addEventListener('dragleave', handleDragLeave);
+    
     item.addEventListener('click', () => {
       if (has) {
         focusPin(a.n);
@@ -786,6 +825,61 @@ function renderList() {
     
     list.appendChild(item);
   });
+}
+
+function handleDragStart(e) {
+  draggedItem = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  document.querySelectorAll('.addr-item').forEach(item => {
+    item.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(e) {
+  if (e.preventDefault) {
+    e.preventDefault();
+  }
+  e.dataTransfer.dropEffect = 'move';
+  
+  if (draggedItem !== this) {
+    this.classList.add('drag-over');
+  }
+  return false;
+}
+
+function handleDragLeave(e) {
+  this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  if (e.stopPropagation) {
+    e.stopPropagation();
+  }
+  
+  if (draggedItem !== this) {
+    // 순서 변경
+    const draggedNum = parseInt(draggedItem.dataset.num);
+    const targetNum = parseInt(this.dataset.num);
+    
+    const draggedIndex = deliveryOrder.indexOf(draggedNum);
+    const targetIndex = deliveryOrder.indexOf(targetNum);
+    
+    // 배열에서 제거하고 새 위치에 삽입
+    deliveryOrder.splice(draggedIndex, 1);
+    const newTargetIndex = deliveryOrder.indexOf(targetNum);
+    deliveryOrder.splice(newTargetIndex, 0, draggedNum);
+    
+    saveOrder();
+    renderList();
+  }
+  
+  return false;
 }
 
 function startPlacing(num) {
@@ -905,7 +999,8 @@ function shareData() {
   
   const data = {
     pins: pinsData,
-    routes: polylines.map(r => r.path)
+    routes: polylines.map(r => r.path),
+    order: deliveryOrder
   };
   
   // JSON을 Base64로 압축
@@ -957,6 +1052,11 @@ function loadSharedData() {
         // 공유 데이터 적용
         pinsData = data.pins;
         
+        // 배송 순서 복원
+        if (data.order) {
+          deliveryOrder = data.order;
+        }
+        
         // 핀 복원
         Object.keys(pinsData).forEach(num => {
           const d = pinsData[num];
@@ -999,10 +1099,11 @@ function loadSharedData() {
 // ========== 내보내기/불러오기 ==========
 function exportData() {
   const data = {
-    version: 3,
+    version: 4,
     exported_at: new Date().toISOString(),
     pins: pinsData,
-    routes: polylines.map(r => r.path)
+    routes: polylines.map(r => r.path),
+    order: deliveryOrder
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -1029,6 +1130,12 @@ function importData(file) {
       
       // 새 데이터 적용
       pinsData = data.pins;
+      
+      // 배송 순서 복원
+      if (data.order) {
+        deliveryOrder = data.order;
+      }
+      
       Object.keys(pinsData).forEach(num => {
         const d = pinsData[num];
         createMarker(num, new naver.maps.LatLng(d.lat, d.lng));
@@ -1072,8 +1179,10 @@ function clearAll() {
   polylines = [];
   pinsData = {};
   newPinCounter = 1;
+  deliveryOrder = ADDRESSES.map(a => a.n);  // 순서 초기화
   saveData();
   saveRoutes();
+  saveOrder();
   renderList();
   updateStats();
 }
