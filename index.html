@@ -634,8 +634,6 @@ function createMarker(num, latlng) {
   
   let isDragging = false;
   let dragStartTime = 0;
-  let touchStartTime = 0;
-  let touchStartPos = null;
   
   // 드래그 시작 감지
   naver.maps.Event.addListener(marker, 'dragstart', function(e) {
@@ -650,41 +648,27 @@ function createMarker(num, latlng) {
     pinsData[num].lng = pos.x;
     saveData();
     
-    // 드래그 후 짧은 시간 동안 클릭 무시
+    // 드래그 후 클릭 무시
     setTimeout(() => {
       isDragging = false;
     }, 300);
   });
   
-  // 터치/마우스 시작 (드래그 판별용)
-  naver.maps.Event.addListener(marker, 'mousedown', function(e) {
-    touchStartTime = Date.now();
-    touchStartPos = e.coord;
-  });
-  
-  naver.maps.Event.addListener(marker, 'touchstart', function(e) {
-    touchStartTime = Date.now();
-    touchStartPos = e.coord;
-  });
-  
-  // 클릭 (짧은 탭만 인식)
+  // 클릭 이벤트
   naver.maps.Event.addListener(marker, 'click', function(e) {
-    const timeDiff = Date.now() - touchStartTime;
+    console.log('마커 클릭됨:', num, 'isDragging:', isDragging, 'isEditMode:', isEditMode);
     
-    // 드래그 중이 아니고, 빠른 탭인 경우만 모달 열기
-    if (!isDragging && timeDiff < 300) {
-      // 위치 이동 판별 (5px 이하 = 클릭)
-      if (touchStartPos && e.coord) {
-        const dx = Math.abs(e.coord.x - touchStartPos.x);
-        const dy = Math.abs(e.coord.y - touchStartPos.y);
-        
-        if (dx < 5 && dy < 5) {
+    // 기본 모드에서는 항상 모달 열기
+    if (!isEditMode) {
+      openModal(num);
+    } 
+    // 수정 모드에서는 드래그 아닐 때만
+    else if (!isDragging) {
+      setTimeout(() => {
+        if (!isDragging) {
           openModal(num);
         }
-      } else {
-        // 좌표 정보 없으면 그냥 열기
-        openModal(num);
-      }
+      }, 50);
     }
   });
   
