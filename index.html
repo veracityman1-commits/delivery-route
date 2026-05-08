@@ -377,10 +377,10 @@
 <div id="modal">
   <div class="modal-content">
     <h3 id="modalTitle">핀 정보</h3>
-    <div class="addr-info" id="modalAddr"></div>
+    <div class="addr-info" id="modalAddr" style="margin-bottom:12px; font-weight:600; color:#2c5f8d;"></div>
     
-    <label for="modalName">핀 이름 (지도에서 호버 시 표시)</label>
-    <input type="text" id="modalName" placeholder="예: 해든빌-701">
+    <label for="modalName">세부주소</label>
+    <input type="text" id="modalName" placeholder="예: 한일시티파크-1607">
     
     <label for="modalMemo">세부 메모</label>
     <textarea id="modalMemo" placeholder="예:&#10;참고: 해든빌-701&#10;품목: 건국 소 1 / 오메가수 소 2"></textarea>
@@ -1238,14 +1238,15 @@ function openModal(num) {
   // 모달 내용 설정
   document.getElementById('modalTitle').textContent = `📍 ${num}번 핀`;
   
-  // 주소 정보 (없으면 기본값)
-  if (a) {
-    document.getElementById('modalAddr').textContent = `${a.road || ''} ${a.detail || ''}`.trim() || '주소 정보 없음';
+  // 도로명 주소만 표시 (예: 도령로103)
+  if (a && a.road) {
+    document.getElementById('modalAddr').textContent = a.road;
   } else {
-    document.getElementById('modalAddr').textContent = pinsData[num].name || `${num}번 핀`;
+    document.getElementById('modalAddr').textContent = '주소 정보 없음';
   }
   
-  document.getElementById('modalName').value = pinsData[num].name || '';
+  // 세부주소는 입력 필드에 (예: 한일시티파크-1607)
+  document.getElementById('modalName').value = pinsData[num].name || (a ? a.detail : '') || '';
   document.getElementById('modalMemo').value = pinsData[num].memo || '';
   
   // 모달 열기
