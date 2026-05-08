@@ -1233,7 +1233,12 @@ function openModal(num) {
   }
   
   editingPinNum = num;
-  const a = ADDRESSES.find(x => x.n === num);
+  
+  // 여러 방법으로 주소 찾기
+  let a = ADDRESSES.find(x => x.n === num);  // 1. 번호로 찾기
+  if (!a && typeof num === 'number') {
+    a = ADDRESSES[num - 1];  // 2. 배열 인덱스로 찾기
+  }
   
   // 디버깅
   console.log('openModal 호출:', {
@@ -1241,27 +1246,28 @@ function openModal(num) {
     pinsData: pinsData[num],
     ADDRESSES_length: ADDRESSES.length,
     found: a,
-    ADDRESSES_sample: ADDRESSES.slice(0, 3)
+    found_by: a ? (ADDRESSES.find(x => x.n === num) ? 'n' : 'index') : 'none'
   });
   
   // 모달 내용 설정
   document.getElementById('modalTitle').textContent = `📍 ${num}번 핀`;
   
-  // 도로명 주소만 표시 (예: 도령로103)
+  // 도로명 주소 표시
   if (a && a.road) {
     document.getElementById('modalAddr').textContent = a.road;
+  } else if (pinsData[num].name) {
+    // 주소 정보 없으면 name이라도 표시
+    document.getElementById('modalAddr').textContent = pinsData[num].name;
   } else {
     document.getElementById('modalAddr').textContent = '주소 정보 없음';
   }
   
-  // 세부주소는 입력 필드에 (예: 한일시티파크-1607)
+  // 세부주소는 입력 필드에
   document.getElementById('modalName').value = pinsData[num].name || (a ? a.detail : '') || '';
   document.getElementById('modalMemo').value = pinsData[num].memo || '';
   
   // 모달 열기
   document.getElementById('modal').classList.add('show');
-  
-  console.log('모달 열림:', num, 'ADDRESSES 찾음:', !!a);
 }
 
 function closeModal() {
