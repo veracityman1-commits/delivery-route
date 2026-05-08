@@ -290,14 +290,29 @@
         <div class="upload-area" id="uploadArea">
           <div style="font-size: 48px; margin-bottom: 10px;">📁</div>
           <div style="font-size: 16px; margin-bottom: 8px; font-weight: 600;">
-            클릭하거나 파일을 드래그하세요
+            CSV 파일을 드래그하세요 (여러 개 동시 선택 가능)
           </div>
-          <div style="font-size: 13px; color: #868e96;">
-            여러 개의 CSV 파일을 한 번에 선택할 수 있습니다
+          <div style="font-size: 13px; color: #868e96; line-height: 1.6;">
+            파일명이 구역명으로 자동 설정됩니다<br>
+            예: 중앙로.csv, 아라동.csv, 인화동.csv
           </div>
         </div>
         
         <input type="file" id="fileInput" accept=".csv" multiple>
+        
+        <div style="background:#e7f5ff; padding:15px; border-radius:8px; margin-top:20px; border-left:4px solid #1971c2;">
+          <div style="font-weight:600; color:#1971c2; margin-bottom:10px;">💡 CSV 파일 만드는 방법</div>
+          <div style="font-size:13px; color:#1971c2; line-height:1.8;">
+            <strong>1. PDF가 있다면:</strong><br>
+            • <a href="https://claude.ai/new" target="_blank" style="color:#0056b3; text-decoration:underline;">Claude.ai</a>에 PDF 업로드<br>
+            • "이 PDF를 구역별로 CSV 파일로 만들어줘. 형식: 순번,도로명주소,세부주소,참고사항,품목" 입력<br>
+            • 생성된 CSV 파일들을 다운로드<br>
+            <br>
+            <strong>2. 엑셀이 있다면:</strong><br>
+            • 구역별로 시트 분리 → 각각 CSV로 저장<br>
+            • 파일명을 구역명으로 변경 (예: 중앙로.csv)
+          </div>
+        </div>
         
         <div id="zoneList" style="margin-top: 20px;"></div>
       </div>
