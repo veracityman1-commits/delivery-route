@@ -1234,44 +1234,44 @@ function openModal(num) {
   
   editingPinNum = num;
   
+  // 숫자로 변환 (문자열 "4" → 숫자 4)
+  const numValue = typeof num === 'string' && !num.startsWith('N') ? parseInt(num) : num;
+  
   // 여러 방법으로 주소 찾기
-  let a = ADDRESSES.find(x => x.n === num);  // 1. 번호로 찾기
-  if (!a && typeof num === 'number') {
-    a = ADDRESSES[num - 1];  // 2. 배열 인덱스로 찾기
+  let a = ADDRESSES.find(x => x.n === numValue || x.n === num);  // 1. 번호로 찾기 (숫자/문자열 둘 다)
+  if (!a && typeof numValue === 'number') {
+    a = ADDRESSES[numValue - 1];  // 2. 배열 인덱스로 찾기
   }
   
   // 디버깅
   console.log('openModal 호출:', {
     num: num,
+    num_type: typeof num,
+    numValue: numValue,
+    numValue_type: typeof numValue,
     pinsData: pinsData[num],
     ADDRESSES_length: ADDRESSES.length,
+    ADDRESSES_sample: ADDRESSES.slice(0, 5).map(x => ({n: x.n, type: typeof x.n, road: x.road})),
     found: a,
-    found_by: a ? (ADDRESSES.find(x => x.n === num) ? 'n' : 'index') : 'none'
+    found_by: a ? (ADDRESSES.find(x => x.n === numValue) ? 'n(number)' : ADDRESSES.find(x => x.n === num) ? 'n(string)' : 'index') : 'none',
+    search_attempts: {
+      by_numValue: ADDRESSES.find(x => x.n === numValue),
+      by_num: ADDRESSES.find(x => x.n === num),
+      by_index: ADDRESSES[numValue - 1]
+    }
   });
   
   // 모달 내용 설정
   document.getElementById('modalTitle').textContent = `📍 ${num}번 핀`;
   
-  // 도로명 주소 표시 (우선순위: a.road > pinsData.name의 일부)
+  // ADDRESSES에서 찾았으면
   if (a && a.road) {
-    // ADDRESSES에서 찾은 경우
     document.getElementById('modalAddr').textContent = a.road;
-    document.getElementById('modalName').value = pinsData[num].name || a.detail || '';
-  } else if (pinsData[num].name) {
-    // ADDRESSES에 없지만 pinsData.name에 "도로명 - 세부주소" 형식으로 저장된 경우
-    const nameParts = pinsData[num].name.split(' ');
-    if (nameParts.length >= 2 && nameParts[0].includes('로')) {
-      // 첫 부분이 도로명인 경우 (예: "도령로103 한일시티파크-1607")
-      document.getElementById('modalAddr').textContent = nameParts[0];
-      document.getElementById('modalName').value = nameParts.slice(1).join(' ');
-    } else {
-      // 분리 안 되면 그대로
-      document.getElementById('modalAddr').textContent = pinsData[num].name;
-      document.getElementById('modalName').value = '';
-    }
+    document.getElementById('modalName').value = a.detail || pinsData[num].name || '';
   } else {
-    document.getElementById('modalAddr').textContent = '주소 정보 없음';
-    document.getElementById('modalName').value = '';
+    // 못 찾았으면 pinsData 사용
+    document.getElementById('modalAddr').textContent = '주소 정보 없음 (ADDRESSES 못 찾음)';
+    document.getElementById('modalName').value = pinsData[num].name || '';
   }
   
   document.getElementById('modalMemo').value = pinsData[num].memo || '';
