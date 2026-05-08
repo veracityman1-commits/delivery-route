@@ -359,6 +359,26 @@
         배송 지도로 내보내기
       </div>
       
+      <!-- GitHub Token 설정 -->
+      <div style="background:#fff3cd; padding:15px; border-radius:8px; margin-bottom:20px; border-left:4px solid #ffc107;">
+        <div style="font-weight:600; color:#856404; margin-bottom:10px; font-size:15px;">
+          🔑 GitHub Token 설정 (최초 1회만)
+        </div>
+        <div style="font-size:13px; color:#856404; margin-bottom:12px; line-height:1.6;">
+          짧은 공유 링크 생성을 위해 GitHub Personal Access Token이 필요합니다.<br>
+          <a href="https://github.com/settings/tokens/new" target="_blank" 
+             style="color:#0056b3; text-decoration:underline; font-weight:600;">
+            👉 여기를 클릭해서 토큰 생성
+          </a> (권한: gist만 선택)
+        </div>
+        <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxx" 
+               style="width:100%; padding:12px; border:2px solid #ffc107; border-radius:6px; font-size:14px; font-family:monospace;">
+        <div style="font-size:12px; color:#856404; margin-top:10px; display:flex; align-items:center; gap:8px;">
+          <span>🔒</span>
+          <span>토큰은 브라우저에만 저장되며 외부로 전송되지 않습니다.</span>
+        </div>
+      </div>
+      
       <div class="actions">
         <button class="btn btn-success" id="btnExport">
           🔗 공유 링크 생성
@@ -371,6 +391,46 @@
         </button>
       </div>
       
+      <!-- 로딩 인디케이터 -->
+      <div id="loadingIndicator" style="display:none; text-align:center; padding:30px; margin-top:20px;">
+        <div style="font-size:32px; margin-bottom:15px;">⏳</div>
+        <div style="color:#667eea; font-weight:600; font-size:16px;">공유 링크 생성 중...</div>
+        <div style="color:#868e96; font-size:13px; margin-top:8px;">데이터를 클라우드에 저장하고 있습니다</div>
+      </div>
+      
+      <!-- 공유 결과 -->
+      <div id="shareResult" style="display:none; margin-top:20px;">
+        <div style="background:#d4edda; padding:20px; border-radius:10px; border:2px solid #28a745;">
+          <div style="margin-bottom:15px; font-weight:700; color:#155724; font-size:17px; display:flex; align-items:center; gap:10px;">
+            <span>✅</span>
+            <span>공유 링크가 생성되었습니다!</span>
+          </div>
+          
+          <div style="background:white; padding:15px; border-radius:8px; margin-bottom:15px;">
+            <label style="display:block; margin-bottom:8px; font-weight:600; color:#333; font-size:13px;">
+              📱 모바일 공유 링크
+            </label>
+            <input type="text" id="shareUrl" readonly 
+                   style="width:100%; padding:12px; border:2px solid #28a745; border-radius:6px; font-size:13px; font-family:monospace; background:#f8f9fa;">
+          </div>
+          
+          <button onclick="copyShareUrl()" class="btn" 
+                  style="width:100%; background:#28a745; color:white; font-size:15px; font-weight:600; padding:14px; margin-bottom:20px;">
+            📋 링크 복사하기
+          </button>
+          
+          <div style="background:white; padding:20px; border-radius:8px; text-align:center;">
+            <div style="font-weight:600; color:#333; margin-bottom:12px; font-size:14px;">
+              📸 QR 코드로 공유
+            </div>
+            <div id="qrcode"></div>
+            <div style="margin-top:12px; font-size:12px; color:#666;">
+              배송원에게 이 QR 코드를 스캔하게 하세요
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div class="status info" id="exportStatus" style="display:block; margin-top:15px;">
         ℹ️ 생성된 데이터를 배송 지도 앱으로 보낼 수 있습니다.
       </div>
@@ -380,6 +440,7 @@
 </div>
 
 <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=svwz8aul2j&submodules=geocoder"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <script>
 // ========== 상태 ==========
@@ -650,9 +711,10 @@ function sleep(ms) {
 }
 
 // ========== 내보내기 ==========
-document.getElementById('btnExport').addEventListener('click', () => {
+document.getElementById('btnExport').addEventListener('click', async () => {
   const password = document.getElementById('sharePassword').value.trim();
   const zoneName = document.getElementById('zoneName').value.trim();
+  const token = document.getElementById('githubToken').value.trim();
   
   if (!zoneName) {
     alert('⚠️ 배송 구역명을 입력하세요!');
@@ -672,25 +734,119 @@ document.getElementById('btnExport').addEventListener('click', () => {
     return;
   }
   
+  if (!token) {
+    alert('⚠️ GitHub Token을 입력하세요!\n\n👉 https://github.com/settings/tokens/new 에서 생성\n(권한: gist만 선택)');
+    document.getElementById('githubToken').focus();
+    return;
+  }
+  
+  // 토큰 저장 (브라우저 로컬 스토리지)
+  localStorage.setItem('githubToken', token);
+  
   const data = {
     pins: pinsData,
     routes: [],
     order: Object.keys(pinsData).map(Number),
     addresses: addressData,
-    zoneName: zoneName, // 구역명 추가
-    password: btoa(password) // Base64 인코딩
+    zoneName: zoneName,
+    password: btoa(password)
   };
   
-  const jsonStr = JSON.stringify(data);
-  const compressed = btoa(encodeURIComponent(jsonStr));
-  const shareUrl = `https://veracityman1-commits.github.io/delivery-route/?share=${compressed}`;
+  // 로딩 표시
+  document.getElementById('loadingIndicator').style.display = 'block';
+  document.getElementById('shareResult').style.display = 'none';
+  document.getElementById('exportStatus').style.display = 'none';
+  
+  try {
+    // GitHub Gist에 저장
+    const gistId = await saveToGist(data, token);
+    
+    // 짧은 URL 생성
+    const shareUrl = `https://veracityman1-commits.github.io/delivery-route/?id=${gistId}`;
+    
+    // 결과 표시
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('shareResult').style.display = 'block';
+    document.getElementById('shareUrl').value = shareUrl;
+    
+    // QR 코드 생성
+    const qrcodeDiv = document.getElementById('qrcode');
+    qrcodeDiv.innerHTML = ''; // 기존 QR 코드 제거
+    new QRCode(qrcodeDiv, {
+      text: shareUrl,
+      width: 200,
+      height: 200,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    
+    // 자동 스크롤
+    document.getElementById('shareResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+  } catch (err) {
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('exportStatus').style.display = 'block';
+    document.getElementById('exportStatus').className = 'status error';
+    document.getElementById('exportStatus').textContent = `❌ 오류: ${err.message}`;
+    console.error('Gist 저장 실패:', err);
+  }
+});
+
+// GitHub Gist에 데이터 저장
+async function saveToGist(data, token) {
+  const response = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: {
+      'Authorization': `token ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      description: `배송 데이터 - ${data.zoneName} (${new Date().toLocaleString('ko-KR')})`,
+      public: false,
+      files: {
+        'delivery-data.json': {
+          content: JSON.stringify(data)
+        }
+      }
+    })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || '인증 실패. 토큰을 확인하세요.');
+  }
+  
+  const gist = await response.json();
+  return gist.id;
+}
+
+// 링크 복사 함수
+function copyShareUrl() {
+  const shareUrl = document.getElementById('shareUrl').value;
   
   if (navigator.clipboard) {
     navigator.clipboard.writeText(shareUrl).then(() => {
-      alert(`✅ 공유 링크가 복사되었습니다!\n\n📍 구역: ${zoneName}\n🔐 비밀번호: ${password}\n\n배송 지도 앱에서 이 링크를 열면 모든 핀이 자동으로 나타납니다.`);
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.textContent = '✅ 복사 완료!';
+      btn.style.background = '#155724';
+      
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '#28a745';
+      }, 2000);
     });
   } else {
-    prompt('이 링크를 복사하세요:', shareUrl);
+    alert('링크: ' + shareUrl);
+  }
+}
+
+// 페이지 로드 시 저장된 토큰 불러오기
+window.addEventListener('DOMContentLoaded', () => {
+  const savedToken = localStorage.getItem('githubToken');
+  if (savedToken) {
+    document.getElementById('githubToken').value = savedToken;
   }
 });
 
