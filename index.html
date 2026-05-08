@@ -164,6 +164,11 @@
   }
   .addr-btn:hover { background: #1e4663; }
   .addr-btn.del { background: #d9534f; }
+  .addr-btn.icon-only {
+    padding: 4px 6px;
+    font-size: 14px;
+    min-width: 24px;
+  }
   
   /* 지도 */
   #mapWrap { flex: 1; position: relative; }
@@ -936,23 +941,29 @@ function renderList() {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       font-weight: 600;
-      cursor: pointer;
       border-radius: 8px;
       margin-bottom: 8px;
       box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
     `;
     
     zoneHeader.innerHTML = `
-      <div style="display:flex; align-items:center; gap:10px;">
+      <div style="display:flex; align-items:center; gap:10px; flex:1;">
         <span>📁 ${zoneName}</span>
         <span style="background:rgba(255,255,255,0.3); padding:3px 8px; border-radius:12px; font-size:11px;">${items.length}건</span>
       </div>
-      <span style="font-size:12px;">${isCollapsed ? '▶' : '▼'}</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button onclick="event.stopPropagation(); deleteZone('${zoneName}')" 
+                style="background:rgba(255,255,255,0.2); border:none; color:white; width:28px; height:28px; border-radius:6px; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;"
+                title="구역 전체 삭제">🗑️</button>
+        <span style="font-size:12px;">${isCollapsed ? '▶' : '▼'}</span>
+      </div>
     `;
     
-    zoneHeader.addEventListener('click', () => {
-      collapsedZones[zoneName] = !collapsedZones[zoneName];
-      renderList();
+    zoneHeader.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') {
+        collapsedZones[zoneName] = !collapsedZones[zoneName];
+        renderList();
+      }
     });
     
     list.appendChild(zoneHeader);
@@ -985,10 +996,10 @@ function renderList() {
           </div>
           <div class="addr-actions">
             ${has 
-              ? `<button class="addr-btn" onclick="event.stopPropagation();focusPin(${a.n})">보기</button>
-                 <button class="addr-btn del" onclick="event.stopPropagation();deletePin(${a.n})">×</button>`
-              : `<button class="addr-btn" onclick="event.stopPropagation();searchAndPin(${a.n})">🔍 찾기</button>
-                 <button class="addr-btn" onclick="event.stopPropagation();startPlacing(${a.n})">📍 찍기</button>`
+              ? `<button class="addr-btn icon-only" onclick="event.stopPropagation();focusPin(${a.n})" title="보기">👁️</button>
+                 <button class="addr-btn icon-only del" onclick="event.stopPropagation();deletePin(${a.n})" title="삭제">🗑️</button>`
+              : `<button class="addr-btn icon-only" onclick="event.stopPropagation();searchAndPin(${a.n})" title="자동 찾기">🔍</button>
+                 <button class="addr-btn icon-only" onclick="event.stopPropagation();startPlacing(${a.n})" title="직접 찍기">📍</button>`
             }
           </div>
         `;
@@ -1151,9 +1162,9 @@ function deletePin(num) {
 }
 
 function deleteZone(zoneName) {
-  const zoneAddresses = ADDRESSES.filter(a => getZoneName(a.road) === zoneName);
+  const zoneAddresses = ADDRESSES.filter(a => a.zoneName === zoneName);
   
-  if (!confirm(`${zoneName} 구역 전체(${zoneAddresses.length}건)를 삭제할까요?`)) return;
+  if (!confirm(`📁 ${zoneName} 구역 전체 (${zoneAddresses.length}개 배송지)를 삭제할까요?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
   
   // 해당 구역의 모든 핀 삭제
   zoneAddresses.forEach(a => {
