@@ -414,7 +414,7 @@
                    style="width:100%; padding:12px; border:2px solid #28a745; border-radius:6px; font-size:13px; font-family:monospace; background:#f8f9fa;">
           </div>
           
-          <button onclick="copyShareUrl()" class="btn" 
+          <button onclick="copyShareUrl(event)" class="btn" 
                   style="width:100%; background:#28a745; color:white; font-size:15px; font-weight:600; padding:14px; margin-bottom:20px;">
             📋 링크 복사하기
           </button>
@@ -829,20 +829,24 @@ async function saveToGist(data, token) {
 }
 
 // 링크 복사 함수
-function copyShareUrl() {
+function copyShareUrl(event) {
   const shareUrl = document.getElementById('shareUrl').value;
   
   if (navigator.clipboard) {
     navigator.clipboard.writeText(shareUrl).then(() => {
-      const btn = event.target;
-      const originalText = btn.textContent;
-      btn.textContent = '✅ 복사 완료!';
-      btn.style.background = '#155724';
-      
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.style.background = '#28a745';
-      }, 2000);
+      const btn = event ? event.target : null;
+      if (btn) {
+        const originalText = btn.textContent;
+        btn.textContent = '✅ 복사 완료!';
+        btn.style.background = '#155724';
+        
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = '#28a745';
+        }, 2000);
+      } else {
+        alert('링크가 복사되었습니다!');
+      }
     });
   } else {
     alert('링크: ' + shareUrl);
