@@ -68,6 +68,8 @@
   .btn-export { background: #5cb85c; color: white; }
   .btn-import { background: #f0ad4e; color: white; }
   .btn-clear { background: #d9534f; color: white; }
+  .btn-edit-mode { background: #9e9e9e; color: white; }
+  .btn-edit-mode.active { background: #d9534f; }
   
   /* 명단 리스트 */
   #addrList {
@@ -329,6 +331,7 @@
       </div>
       <div class="toolbar">
         <button class="btn-export" id="btnShare" style="background:#2196f3">🔗 공유하기</button>
+        <button class="btn-edit-mode" id="btnEditMode" style="background:#9e9e9e">📍 위치 수정</button>
         <div style="position:relative; flex:1;">
           <button class="btn-clear" id="btnClearMenu">🗑️초기화 ▼</button>
           <div id="clearDropdown" style="display:none; position:absolute; top:100%; right:0; background:white; border:1px solid #ddd; border-radius:4px; margin-top:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1); z-index:100; min-width:150px;">
@@ -486,6 +489,7 @@ let polylines = [];     // 그려진 동선들 (배열)
 let pendingPinNum = null;  // 핀 찍기 대기 중인 번호
 let editingPinNum = null;  // 모달에서 편집 중인 번호
 let newPinCounter = 1;  // 신규 핀 번호 (N1, N2, ...)
+let isEditMode = false; // 위치 수정 모드 (true: 드래그 가능, false: 드래그 불가)
 
 // 배송 순서 (사용자가 정한 순서)
 let deliveryOrder = ADDRESSES.map(a => a.n);  // 기본: [1, 2, 3, ..., 76]
@@ -624,21 +628,23 @@ function createMarker(num, latlng) {
       content: `<div class="pin-label" style="background:${bgColor}">${displayNum}</div>`,
       anchor: new naver.maps.Point(15, 15)
     },
-    draggable: true,
+    draggable: false,  // 기본: 드래그 불가
     title: pinsData[num] ? pinsData[num].name || `${num}번 핀` : `${num}번 핀`
   });
   
   let isDragging = false;
   let dragStartTime = 0;
+  let touchStartTime = 0;
+  let touchStartPos = null;
   
   // 드래그 시작 감지
-  naver.maps.Event.addListener(marker, 'dragstart', function() {
+  naver.maps.Event.addListener(marker, 'dragstart', function(e) {
     isDragging = true;
     dragStartTime = Date.now();
   });
   
   // 드래그 종료
-  naver.maps.Event.addListener(marker, 'dragend', function() {
+  naver.maps.Event.addListener(marker, 'dragend', function(e) {
     const pos = marker.getPosition();
     pinsData[num].lat = pos.y;
     pinsData[num].lng = pos.x;
@@ -647,13 +653,38 @@ function createMarker(num, latlng) {
     // 드래그 후 짧은 시간 동안 클릭 무시
     setTimeout(() => {
       isDragging = false;
-    }, 200);
+    }, 300);
   });
   
-  // 클릭 (드래그 아닐 때만)
-  naver.maps.Event.addListener(marker, 'click', function() {
-    if (!isDragging && (Date.now() - dragStartTime > 200)) {
-      openModal(num);
+  // 터치/마우스 시작 (드래그 판별용)
+  naver.maps.Event.addListener(marker, 'mousedown', function(e) {
+    touchStartTime = Date.now();
+    touchStartPos = e.coord;
+  });
+  
+  naver.maps.Event.addListener(marker, 'touchstart', function(e) {
+    touchStartTime = Date.now();
+    touchStartPos = e.coord;
+  });
+  
+  // 클릭 (짧은 탭만 인식)
+  naver.maps.Event.addListener(marker, 'click', function(e) {
+    const timeDiff = Date.now() - touchStartTime;
+    
+    // 드래그 중이 아니고, 빠른 탭인 경우만 모달 열기
+    if (!isDragging && timeDiff < 300) {
+      // 위치 이동 판별 (5px 이하 = 클릭)
+      if (touchStartPos && e.coord) {
+        const dx = Math.abs(e.coord.x - touchStartPos.x);
+        const dy = Math.abs(e.coord.y - touchStartPos.y);
+        
+        if (dx < 5 && dy < 5) {
+          openModal(num);
+        }
+      } else {
+        // 좌표 정보 없으면 그냥 열기
+        openModal(num);
+      }
     }
   });
   
@@ -1284,6 +1315,35 @@ function shareData() {
   }
 }
 
+// ========== 위치 수정 모드 ==========
+function toggleEditMode() {
+  isEditMode = !isEditMode;
+  const btn = document.getElementById('btnEditMode');
+  
+  if (isEditMode) {
+    // 수정 모드 활성화
+    btn.classList.add('active');
+    btn.textContent = '✅ 수정 모드';
+    showModeBanner('📍 핀을 드래그해서 위치를 수정하세요 (다시 클릭하면 종료)');
+    
+    // 모든 마커 드래그 가능하게
+    Object.values(markers).forEach(marker => {
+      marker.setDraggable(true);
+    });
+  } else {
+    // 수정 모드 비활성화
+    btn.classList.remove('active');
+    btn.textContent = '📍 위치 수정';
+    hideModeBanner();
+    
+    // 모든 마커 드래그 불가능하게
+    Object.values(markers).forEach(marker => {
+      marker.setDraggable(false);
+    });
+  }
+}
+
+
 // 페이지 로드 시 공유 데이터 확인
 let pendingSharedData = null;
 
@@ -1633,6 +1693,9 @@ document.getElementById('searchBox').addEventListener('input', renderList);
 document.getElementById('btnExport').addEventListener('click', exportData);
 
 document.getElementById('btnShare').addEventListener('click', shareData);
+
+// 위치 수정 모드 토글
+document.getElementById('btnEditMode').addEventListener('click', toggleEditMode);
 
 // 초기화 메뉴 토글
 document.getElementById('btnClearMenu').addEventListener('click', (e) => {
