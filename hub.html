@@ -752,6 +752,13 @@ document.getElementById('btnExport').addEventListener('click', async () => {
     password: btoa(password)
   };
   
+  // 디버깅: 데이터 확인
+  console.log('공유 데이터 생성:', {
+    pins_count: Object.keys(pinsData).length,
+    addresses_count: addressData.length,
+    addresses_sample: addressData.slice(0, 3)
+  });
+  
   // 로딩 표시
   document.getElementById('loadingIndicator').style.display = 'block';
   document.getElementById('shareResult').style.display = 'none';
