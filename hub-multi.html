@@ -571,9 +571,8 @@
                 product: addr.product
               });
               
-              // pinsData에 추가 (구역-번호 형식)
-              const key = `${zoneName}-${addr.n}`;
-              zone.pinsData[key] = {
+              // pinsData에 추가 (숫자만)
+              zone.pinsData[addr.n] = {
                 lat: coords.lat,
                 lng: coords.lng,
                 name: addr.detail,
@@ -671,15 +670,33 @@
       // 통합 링크 생성 (선택사항)
       const allPins = {};
       const allAddresses = [];
+      let pinOffset = 0;
+      
       Object.keys(zones).forEach(zoneName => {
-        Object.assign(allPins, zones[zoneName].pinsData);
-        allAddresses.push(...zones[zoneName].addresses);
+        const zone = zones[zoneName];
+        
+        // 각 구역의 핀을 오프셋 적용하여 추가
+        Object.keys(zone.pinsData).forEach(key => {
+          const newKey = parseInt(key) + pinOffset;
+          allPins[newKey] = {...zone.pinsData[key]};
+        });
+        
+        // addresses도 번호 조정
+        zone.addresses.forEach(addr => {
+          allAddresses.push({
+            ...addr,
+            n: addr.n + pinOffset
+          });
+        });
+        
+        // 다음 구역을 위한 오프셋 증가
+        pinOffset += Object.keys(zone.pinsData).length;
       });
       
       const allData = {
         pins: allPins,
         routes: [],
-        order: Object.keys(allPins),
+        order: Object.keys(allPins).map(k => parseInt(k)),
         addresses: allAddresses,
         zoneName: '전체',
         password: btoa(password)
