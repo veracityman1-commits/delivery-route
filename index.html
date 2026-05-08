@@ -1235,6 +1235,15 @@ function openModal(num) {
   editingPinNum = num;
   const a = ADDRESSES.find(x => x.n === num);
   
+  // 디버깅
+  console.log('openModal 호출:', {
+    num: num,
+    pinsData: pinsData[num],
+    ADDRESSES_length: ADDRESSES.length,
+    found: a,
+    ADDRESSES_sample: ADDRESSES.slice(0, 3)
+  });
+  
   // 모달 내용 설정
   document.getElementById('modalTitle').textContent = `📍 ${num}번 핀`;
   
