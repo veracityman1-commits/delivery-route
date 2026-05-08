@@ -654,8 +654,9 @@ function createMarker(num, latlng) {
     }, 300);
   });
   
-  // 클릭 이벤트
+  // 클릭 이벤트 - ALERT 테스트
   naver.maps.Event.addListener(marker, 'click', function(e) {
+    alert(`핀 ${num}번 클릭됨! 모달 열기 시도`);
     console.log('마커 클릭됨:', num, 'isDragging:', isDragging, 'isEditMode:', isEditMode);
     
     // 기본 모드에서는 항상 모달 열기
