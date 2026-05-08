@@ -654,9 +654,8 @@ function createMarker(num, latlng) {
     }, 300);
   });
   
-  // 클릭 이벤트 - ALERT 테스트
+  // 클릭 이벤트
   naver.maps.Event.addListener(marker, 'click', function(e) {
-    alert(`핀 ${num}번 클릭됨! 모달 열기 시도`);
     console.log('마커 클릭됨:', num, 'isDragging:', isDragging, 'isEditMode:', isEditMode);
     
     // 기본 모드에서는 항상 모달 열기
@@ -1228,14 +1227,31 @@ function hideModeBanner() {
 
 // ========== 모달 ==========
 function openModal(num) {
-  if (!pinsData[num]) return;
+  if (!pinsData[num]) {
+    alert('핀 데이터가 없습니다.');
+    return;
+  }
+  
   editingPinNum = num;
   const a = ADDRESSES.find(x => x.n === num);
+  
+  // 모달 내용 설정
   document.getElementById('modalTitle').textContent = `📍 ${num}번 핀`;
-  document.getElementById('modalAddr').textContent = `${a.road} ${a.detail || ''}`;
+  
+  // 주소 정보 (없으면 기본값)
+  if (a) {
+    document.getElementById('modalAddr').textContent = `${a.road || ''} ${a.detail || ''}`.trim() || '주소 정보 없음';
+  } else {
+    document.getElementById('modalAddr').textContent = pinsData[num].name || `${num}번 핀`;
+  }
+  
   document.getElementById('modalName').value = pinsData[num].name || '';
   document.getElementById('modalMemo').value = pinsData[num].memo || '';
+  
+  // 모달 열기
   document.getElementById('modal').classList.add('show');
+  
+  console.log('모달 열림:', num, 'ADDRESSES 찾음:', !!a);
 }
 
 function closeModal() {
