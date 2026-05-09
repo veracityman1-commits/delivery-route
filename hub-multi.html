@@ -601,9 +601,15 @@
       document.getElementById('successMessage').style.display = 'block';
     }
     
-    // 네이버 지오코딩
+    // 네이버 지오코딩 (Referrer 방식)
     function geocodeAddress(address) {
       return new Promise((resolve, reject) => {
+        if (!window.naver || !window.naver.maps) {
+          console.error('Naver Maps SDK 로드 안 됨');
+          resolve(null);
+          return;
+        }
+        
         naver.maps.Service.geocode({
           query: '제주시 ' + address
         }, (status, response) => {

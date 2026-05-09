@@ -399,84 +399,7 @@
 
 <script>
 // ========== 주소 데이터 (동적 관리) ==========
-let ADDRESSES = [
-  {n:1, road:"도령로127-1", detail:"해든빌-701"},
-  {n:2, road:"도령로127-2", detail:"일류해든빌303호"},
-  {n:3, road:"도령로103", detail:"한일시티파크-1607"},
-  {n:4, road:"성신로2길25", detail:"연동베스트@-202"},
-  {n:5, road:"도령로11길26-1", detail:"만진빌라402호"},
-  {n:6, road:"일주서로7860", detail:"1층(블랙박스)"},
-  {n:7, road:"제성5길6-5", detail:"302호"},
-  {n:8, road:"성신로9", detail:"연동대림@103-301"},
-  {n:9, road:"도령로73", detail:"펠리체@-703"},
-  {n:10, road:"성신북길8-1", detail:"주안빌라-301호"},
-  {n:11, road:"남녕로6길10", detail:"삼미주택 가-502"},
-  {n:12, road:"남녕로8길9", detail:"정한맨션 B-302"},
-  {n:13, road:"남녕로36", detail:"영진그린빌라503호"},
-  {n:14, road:"남녕로17", detail:"연동@가-601"},
-  {n:15, road:"도령로37", detail:"에코하임601호"},
-  {n:16, road:"다랑곶4길22", detail:"별두빌라 가-202"},
-  {n:17, road:"월랑로8길34", detail:"황실빌라302"},
-  {n:18, road:"다랑곶2길42", detail:"1층"},
-  {n:19, road:"다랑곶1길17", detail:"금호주택502호"},
-  {n:20, road:"수덕5길5-1", detail:"이화빌라-401"},
-  {n:21, road:"수덕7길14", detail:"대왕-305"},
-  {n:22, road:"수덕3길20", detail:"성실빌라502호"},
-  {n:23, road:"수덕7길41", detail:"402호"},
-  {n:24, road:"수덕3길38", detail:"민성주택101호"},
-  {n:25, road:"수덕3길38", detail:"민성주택201호"},
-  {n:26, road:"노형로369", detail:"세미미용실옆집"},
-  {n:27, road:"정존1길6", detail:"정우빌라 나-501"},
-  {n:28, road:"정존3길27", detail:"삼미빌라101호"},
-  {n:29, road:"정존1길33", detail:"제라한보쌈"},
-  {n:30, road:"수덕로78", detail:"노형e편한@107-501"},
-  {n:31, road:"광평동로66", detail:"중흥S클래스102-301"},
-  {n:32, road:"광평동로66", detail:"중흥S클래스103-1005"},
-  {n:33, road:"월광로61", detail:"라임빌-503"},
-  {n:34, road:"수덕로44", detail:"뜨란채@211-1002"},
-  {n:35, road:"수덕로44", detail:"뜨란채@203-303"},
-  {n:36, road:"수덕로44", detail:"뜨란채@204-701"},
-  {n:37, road:"정존11길54", detail:"정든마을@102-603"},
-  {n:38, road:"정존11길54", detail:"정든마을@102-606"},
-  {n:39, road:"정존11길54", detail:"정든마을@103-802"},
-  {n:40, road:"정존11길54", detail:"정든마을@104-604"},
-  {n:41, road:"정존11길54", detail:"정든마을@107-604"},
-  {n:42, road:"정존11길54", detail:"정든마을@107-602"},
-  {n:43, road:"정존11길54", detail:"정든마을@303-202"},
-  {n:44, road:"정존11길54", detail:"정든마을@304-802"},
-  {n:45, road:"정존11길54", detail:"정든마을@305-601"},
-  {n:46, road:"월광로134", detail:"4층 (골프)"},
-  {n:47, road:"달마루길10-1", detail:"선비꼬마김밥"},
-  {n:48, road:"대동길17-4", detail:"해밀타운-405"},
-  {n:49, road:"오래물길12-9", detail:""},
-  {n:50, road:"도두1길35", detail:"안집"},
-  {n:51, road:"서해안로186", detail:""},
-  {n:52, road:"도공로14-2", detail:"섬머리"},
-  {n:53, road:"도리로62", detail:"나무향기(돗깨비)"},
-  {n:54, road:"오광로5", detail:"천일고속관광 2층"},
-  {n:55, road:"오광로6길3", detail:"오도가든"},
-  {n:56, road:"오광로99", detail:"(현대에너지)"},
-  {n:57, road:"우평로47-1", detail:"(제주자원)"},
-  {n:58, road:"진군남2길9", detail:"뜨레모아쉐르빌301호"},
-  {n:59, road:"진군길56-11", detail:"대규원룸201호"},
-  {n:60, road:"진군1길3", detail:"으뜸마을@203-902"},
-  {n:61, road:"진군1길3", detail:"으뜸마을@203-206"},
-  {n:62, road:"진군길1-11", detail:"301호"},
-  {n:63, road:"은수길15-4", detail:"수성아트빌202호"},
-  {n:64, road:"연화로2길17-9", detail:"그린빌라202"},
-  {n:65, road:"연화로25", detail:"대림2차@206-501"},
-  {n:66, road:"연화로25", detail:"대림2차@202-904"},
-  {n:67, road:"국기로1길4", detail:"남도보쌈짚"},
-  {n:68, road:"국기중길16", detail:"1층, 인비토미용실"},
-  {n:69, road:"국기로3길5-7", detail:"401호"},
-  {n:70, road:"과원로118", detail:"아델리움102-201"},
-  {n:71, road:"과원로118", detail:"아델리움106-102"},
-  {n:72, road:"연북로106", detail:"트리플시티102-407"},
-  {n:73, road:"연북로66", detail:"에코파인-601"},
-  {n:74, road:"원노형로90", detail:"아이파크1차@101-1506"},
-  {n:75, road:"연북로8", detail:"에이스텔-301"},
-  {n:76, road:"노형11길5-6", detail:"6층"},
-];
+let ADDRESSES = [];  // Gist에서 불러옴
 
 const STORAGE_KEY = 'nohyeong_delivery_v1';
 const ORDER_KEY = 'nohyeong_order_v1';
@@ -1168,9 +1091,20 @@ function searchAndPin(num) {
 
 function deletePin(num) {
   if (!confirm(`${num}번 핀을 삭제할까요?`)) return;
+  
+  // 마커 삭제
   if (markers[num]) markers[num].setMap(null);
   delete markers[num];
   delete pinsData[num];
+  
+  // ADDRESSES 배열에서 삭제
+  const idx = ADDRESSES.findIndex(a => a.n === num);
+  if (idx > -1) ADDRESSES.splice(idx, 1);
+  
+  // deliveryOrder에서 삭제
+  const orderIdx = deliveryOrder.indexOf(num);
+  if (orderIdx > -1) deliveryOrder.splice(orderIdx, 1);
+  
   saveData();
   renderList();
   updateStats();
