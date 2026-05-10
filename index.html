@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 15단계</title>
+<title>배송 동선 - 16단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -372,7 +372,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v15</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v16</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76 <span id="debugHeading" style="font-size:10px;opacity:0.7;"></span></span>
 </div>
 
@@ -1226,11 +1226,12 @@ function updateDirectionIndicator() {
   
   if (locationMode === 2) {
     // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
-    // 화살표와 동일한 방식으로 adjustedHeading 적용
+    // 지도가 360-heading으로 자동회전하므로 바라보는 방향이 이미 위
+    // → 부채꼴은 항상 위(0도) 고정
     if (arrow) arrow.style.display = 'none';
     if (cone) {
       cone.style.display = '';
-      if (conePath) conePath.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
+      if (conePath) conePath.setAttribute('transform', 'rotate(0,50,50)');
     }
   } else {
     // 모드0/1: 화살표 표시 (파란점 중심으로 공전), 부채꼴 숨김
