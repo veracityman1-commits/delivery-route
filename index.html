@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 12단계</title>
+<title>배송 동선 - 13단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -175,10 +175,10 @@
   /* 지도 */
   #mapWrap { flex: 1; position: relative; overflow: hidden; }
   #map { 
-    /* 회전 시 모서리 빈 공간 방지: 대각선 비율만큼 크게 */
-    width: 142%; height: 142%;
+    /* 회전 시 모서리 빈 공간 방지: 200%로 충분히 크게 */
+    width: 200%; height: 200%;
     position: absolute;
-    top: -21%; left: -21%;
+    top: -50%; left: -50%;
     transition: none;
   }
   
@@ -371,8 +371,8 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v12</span></h1>
-  <span class="stats">완료 <b id="doneCount">0</b>/76</span>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v13</span></h1>
+  <span class="stats">완료 <b id="doneCount">0</b>/76 <span id="debugHeading" style="font-size:10px;opacity:0.7;"></span></span>
 </div>
 
 <div id="main">
@@ -534,19 +534,21 @@ function applyMapRotation(deg) {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
   
+  // 지도 200%로 확대된 상태에서 중심점 기준 회전
+  mapEl.style.transformOrigin = '50% 50%';
+  
   if (currentMapRotation === 0) {
-    mapEl.style.transform = '';
+    mapEl.style.transform = 'none';
   } else {
-    // 순수 회전만 적용 (빈 공간은 CSS 크기 142%로 해결)
     mapEl.style.transform = `rotate(${currentMapRotation}deg)`;
   }
   
   // 핀(마커)은 반대로 회전 → 항상 정방향 유지
   document.querySelectorAll('.pin-label').forEach(pin => {
     if (currentMapRotation === 0) {
-      pin.style.transform = 'scale(1)';
+      pin.style.cssText += '; transform: scale(1) !important;';
     } else {
-      pin.style.transform = `rotate(${-currentMapRotation}deg) scale(1)`;
+      pin.style.cssText += `; transform: rotate(${-currentMapRotation}deg) scale(1) !important;`;
     }
   });
   
@@ -1132,6 +1134,13 @@ function attachHeadingListener() {
     
     deviceHeading = heading;
     
+    // 디버그: heading 값 표시 (방향 확인용, 나중에 제거)
+    const dbg = document.getElementById('debugHeading');
+    if (dbg) {
+      const dir = heading < 45 || heading >= 315 ? '북' : heading < 135 ? '동' : heading < 225 ? '남' : '서';
+      dbg.textContent = `H:${Math.round(heading)}°${dir} R:${Math.round(currentMapRotation)}°`;
+    }
+    
     // 화살표/부채꼴 방향 업데이트
     updateDirectionIndicator();
     
@@ -1203,12 +1212,11 @@ function updateDirectionIndicator() {
   
   if (locationMode === 2) {
     // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
-    // 지도가 -heading으로 자동회전하므로 부채꼴은 항상 위(0도) 고정
-    // → 화면상에서 항상 바라보는 방향(위쪽)을 가리킴
+    // 화살표와 동일한 방식으로 adjustedHeading 적용
     if (arrow) arrow.style.display = 'none';
     if (cone) {
       cone.style.display = '';
-      if (conePath) conePath.setAttribute('transform', 'rotate(0,50,50)');
+      if (conePath) conePath.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
     }
   } else {
     // 모드0/1: 화살표 표시 (파란점 중심으로 공전), 부채꼴 숨김
