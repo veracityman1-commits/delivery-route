@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 7단계</title>
+<title>배송 동선 - 8단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -371,7 +371,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v7</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v8</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76</span>
 </div>
 
@@ -720,6 +720,11 @@ function initMap() {
   
   loadRoutes();
   
+  // 지도를 손으로 움직이면(드래그) 위치 추적 해제
+  naver.maps.Event.addListener(map, 'dragstart', function() {
+    onMapDragDeactivate();
+  });
+  
   // ========== 지도 길게누르기 (네비게이션) ==========
   let longPressTimer = null;
   let longPressCoord = null;
@@ -1037,14 +1042,27 @@ function loadRoutes() {
   } catch(e) { console.error('동선 복원 실패', e); }
 }
 
-// ========== GPS 위치 (항상 표시) + 내위치 버튼 (2단 토글) ==========
-// 내 위치 파란점은 항상 표시됨 (앱 켜자마자 GPS 시작)
-// 버튼 토글: 모드A(화살표+정북) ↔ 모드B(부채꼴+나침반 자동회전)
-// locationMode: 0=화살표+정북, 1=부채꼴+나침반
-let locationMode = 0;
-let deviceHeading = 0; // DeviceOrientation에서 받는 방향 (나침반)
+// ========== GPS + 내위치 + 나침반 (네이버 지도 동일) ==========
+// 파란점은 앱 시작 시부터 항상 표시
+// 
+// [나침반 버튼]
+//   정북 상태에서 누르면 → 나침반 모드(바라보는 방향으로 지도 자동회전)
+//   나침반 모드에서 누르면 → 정북으로 리셋 + 나침반 해제
+//   손가락으로 지도 회전 후 누르면 → 정북으로 리셋
+//
+// [내위치 버튼] 3단 상태
+//   비활성(OFF): 파란점만 표시, 지도 추적 안 함. 지도를 손으로 움직이면 이 상태로 전환
+//   1회 클릭(추적): 내 위치로 이동, 화살표 표시, 지도 계속 따라감
+//   2회 클릭(헤딩업): 내 위치 중심 고정, 바라보는 방향으로 지도 자동회전, 부채꼴 표시
+//   다시 클릭 또는 지도 스크롤 → 비활성
 
-// 앱 시작 시 자동으로 GPS 시작
+let locationMode = 0; // 0=비활성, 1=추적(화살표), 2=헤딩업(부채꼴+자동회전)
+let deviceHeading = 0; // 현재 바라보는 방향 (0=북, 90=동, 180=남, 270=서)
+let headingListenerAttached = false;
+let compassWatchActive = false;
+let compassHandler = null;
+
+// ===== 앱 시작 시 GPS + 방향 감시 시작 =====
 function initGPS() {
   if (!navigator.geolocation) return;
   
@@ -1060,18 +1078,16 @@ function initGPS() {
       const lng = position.coords.longitude;
       const latlng = new naver.maps.LatLng(lat, lng);
       
-      // GPS heading (이동 중일 때)
+      // GPS heading (이동 중)
       if (position.coords.heading !== null && position.coords.heading !== undefined && !isNaN(position.coords.heading)) {
         currentHeading = position.coords.heading;
       }
       
       isTrackingLocation = true;
-      
-      // 내 위치 마커 업데이트
       updateMyLocationMarker(latlng);
       
-      // 모드B(부채꼴+나침반)이면 지도 중심 따라가기
-      if (locationMode === 1) {
+      // 모드1(추적) 또는 모드2(헤딩업): 지도가 내 위치를 따라감
+      if (locationMode >= 1) {
         map.setCenter(latlng);
       }
     },
@@ -1081,17 +1097,17 @@ function initGPS() {
     options
   );
   
-  // 나침반(DeviceOrientation) 항상 감시 - 방향 화살표/부채꼴 회전용
+  // 방향 감시 시작 (Android는 바로, iOS는 권한 필요)
   startHeadingWatch();
 }
 
-// DeviceOrientation으로 바라보는 방향 항상 감시
+// ===== DeviceOrientation 방향 감시 =====
 function startHeadingWatch() {
-  // iOS 13+ 권한 요청은 사용자 제스처에서만 가능하므로
-  // 여기서는 Android/비iOS만 자동 시작, iOS는 버튼 누를 때 처리
+  if (headingListenerAttached) return;
+  
   if (typeof DeviceOrientationEvent !== 'undefined' && 
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS: 버튼 클릭 시 권한 요청 (아래 cycleLocationMode에서)
+    // iOS: 사용자 제스처 필요 → 버튼 클릭 시 호출
     return;
   }
   
@@ -1099,18 +1115,19 @@ function startHeadingWatch() {
 }
 
 function attachHeadingListener() {
+  if (headingListenerAttached) return;
+  headingListenerAttached = true;
+  
   window.addEventListener('deviceorientation', function(e) {
     let heading = 0;
     
+    // iOS
     if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
       heading = e.webkitCompassHeading;
-    } else if (e.alpha !== null && e.alpha !== undefined) {
-      heading = (360 - e.alpha) % 360;
     }
-    
-    // 이동 중(GPS heading 유효)이면 GPS heading 우선
-    if (isTrackingLocation && currentHeading !== 0 && !isNaN(currentHeading)) {
-      heading = currentHeading;
+    // Android
+    else if (e.alpha !== null && e.alpha !== undefined) {
+      heading = (360 - e.alpha) % 360;
     }
     
     deviceHeading = heading;
@@ -1118,32 +1135,22 @@ function attachHeadingListener() {
     // 화살표/부채꼴 방향 업데이트
     updateDirectionIndicator();
     
-    // 모드B: 지도 자동회전
-    if (locationMode === 1) {
+    // 모드2(헤딩업): 지도도 자동회전
+    if (locationMode === 2) {
       applyMapRotation(heading);
     }
   });
 }
 
-// 내 위치 마커 생성/업데이트
+// ===== 내 위치 마커 (파란점 + 화살표/부채꼴) =====
 function updateMyLocationMarker(latlng) {
   if (!myLocationMarker) {
-    // 파란 점 + 방향 화살표 + 부채꼴 (CSS로 전환)
     myLocationMarker = new naver.maps.Marker({
       position: latlng,
       map: map,
       icon: {
-        content: `<div id="myLocWrap" style="position:relative; width:80px; height:80px;">
-          <!-- 부채꼴 시야 (모드B에서만 표시) -->
-          <div id="myLocCone" style="display:none; position:absolute; top:-30px; left:50%; transform:translateX(-50%) rotate(0deg); width:0; height:0; border-left:30px solid transparent; border-right:30px solid transparent; border-bottom:50px solid rgba(66,133,244,0.15); transform-origin:center bottom;"></div>
-          <!-- 방향 화살표 (모드A에서 표시) -->
-          <div id="myLocArrow" style="position:absolute; top:8px; left:50%; transform:translateX(-50%) rotate(0deg); width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent; border-bottom:14px solid rgba(66,133,244,0.7); transform-origin:center bottom;"></div>
-          <!-- 파란 점 (항상 표시) -->
-          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:18px; height:18px; border-radius:50%; background:#4285f4; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
-          <!-- 파란 점 주변 투명 원 -->
-          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:40px; height:40px; border-radius:50%; background:rgba(66,133,244,0.12);"></div>
-        </div>`,
-        anchor: new naver.maps.Point(40, 40)
+        content: createMyLocationHTML(),
+        anchor: new naver.maps.Point(50, 50)
       },
       zIndex: 1000
     });
@@ -1152,35 +1159,62 @@ function updateMyLocationMarker(latlng) {
   }
 }
 
-// 방향 화살표/부채꼴 회전 업데이트
+function createMyLocationHTML() {
+  return `<div id="myLocWrap" style="position:relative; width:100px; height:100px; pointer-events:none;">
+    <!-- 부채꼴 시야범위 (모드2에서만 표시) -->
+    <svg id="myLocCone" width="100" height="100" viewBox="0 0 100 100" style="position:absolute; top:0; left:0; display:none;">
+      <defs>
+        <radialGradient id="coneGrad" cx="50%" cy="100%" r="70%" fx="50%" fy="100%">
+          <stop offset="0%" stop-color="rgba(66,133,244,0.25)"/>
+          <stop offset="100%" stop-color="rgba(66,133,244,0.02)"/>
+        </radialGradient>
+      </defs>
+      <path d="M50,50 L20,5 A45,45 0 0,1 80,5 Z" fill="url(#coneGrad)" transform="rotate(0,50,50)"/>
+    </svg>
+    <!-- 방향 화살표 (모드1에서 표시) -->
+    <div id="myLocArrow" style="position:absolute; top:10px; left:50%; transform:translateX(-50%) rotate(0deg); transform-origin:center 40px;">
+      <svg width="16" height="20" viewBox="0 0 16 20">
+        <polygon points="8,0 16,16 8,12 0,16" fill="rgba(66,133,244,0.8)"/>
+      </svg>
+    </div>
+    <!-- 파란 점 그림자 -->
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:36px; height:36px; border-radius:50%; background:rgba(66,133,244,0.12);"></div>
+    <!-- 파란 점 본체 -->
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:16px; height:16px; border-radius:50%; background:#4285f4; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+  </div>`;
+}
+
+// ===== 방향 표시 업데이트 =====
 function updateDirectionIndicator() {
-  // 지도가 회전되어 있으면 마커도 CSS로 회전되므로 보정 필요
-  const adjustedHeading = deviceHeading - currentMapRotation;
-  
   const arrow = document.getElementById('myLocArrow');
   const cone = document.getElementById('myLocCone');
+  if (!arrow && !cone) return;
   
-  if (locationMode === 0) {
-    // 모드A: 화살표 표시, 부채꼴 숨김
+  // 지도 회전 보정: 지도가 CSS로 회전되므로 마커 방향도 보정
+  const adjustedHeading = deviceHeading - currentMapRotation;
+  
+  if (locationMode === 2) {
+    // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
+    if (arrow) arrow.style.display = 'none';
+    if (cone) {
+      cone.style.display = '';
+      const path = cone.querySelector('path');
+      if (path) path.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
+    }
+  } else {
+    // 모드0/1: 화살표 표시, 부채꼴 숨김
+    if (cone) cone.style.display = 'none';
     if (arrow) {
       arrow.style.display = '';
       arrow.style.transform = `translateX(-50%) rotate(${adjustedHeading}deg)`;
     }
-    if (cone) cone.style.display = 'none';
-  } else {
-    // 모드B: 부채꼴 표시, 화살표 숨김
-    if (arrow) arrow.style.display = 'none';
-    if (cone) {
-      cone.style.display = '';
-      cone.style.transform = `translateX(-50%) rotate(${adjustedHeading}deg)`;
-    }
   }
 }
 
-// 내위치 버튼: 2단 토글
+// ===== 내위치 버튼 (3단 토글) =====
 function cycleLocationMode() {
   // iOS 권한 요청 (최초 1회)
-  if (typeof DeviceOrientationEvent !== 'undefined' && 
+  if (!headingListenerAttached && typeof DeviceOrientationEvent !== 'undefined' && 
       typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission()
       .then(state => {
@@ -1194,10 +1228,10 @@ function cycleLocationMode() {
   const btn = document.getElementById('btnMyLocation');
   
   if (locationMode === 0) {
-    // 모드A → 모드B: 부채꼴 + 나침반 자동회전
+    // 비활성 → 추적(화살표)
     locationMode = 1;
-    btn.classList.remove('tracking');
-    btn.classList.add('compass-on');
+    btn.classList.add('tracking');
+    btn.classList.remove('compass-on');
     
     // 내 위치로 이동
     if (myLocationMarker) {
@@ -1205,97 +1239,63 @@ function cycleLocationMode() {
       map.setZoom(Math.max(map.getZoom(), 16));
     }
     
-    startCompass();
-  } else {
-    // 모드B → 모드A: 화살표 + 정북 (지도 회전 유지하지 않음)
-    locationMode = 0;
-    btn.classList.add('tracking');
-    btn.classList.remove('compass-on');
+  } else if (locationMode === 1) {
+    // 추적 → 헤딩업(부채꼴 + 자동회전)
+    locationMode = 2;
+    btn.classList.remove('tracking');
+    btn.classList.add('compass-on');
     
-    stopCompass();
-    // 정북으로 돌아가지 않음 - 현재 회전 유지
-    // 정북이 필요하면 나침반 버튼 사용
+    if (myLocationMarker) {
+      map.setCenter(myLocationMarker.getPosition());
+    }
+    
+  } else {
+    // 헤딩업 → 비활성 (지도 회전은 유지, 추적만 해제)
+    locationMode = 0;
+    btn.classList.remove('tracking', 'compass-on');
+    
+    // 자동회전 해제하지만 현재 회전 유지
+    // 정북 필요하면 나침반 버튼 사용
   }
   
   updateDirectionIndicator();
 }
 
-// 나침반 버튼: 정북으로 리셋
-function resetToNorth() {
-  applyMapRotation(0);
-  
-  // 모드B(나침반 자동회전)였으면 모드A로 전환
-  if (locationMode === 1) {
-    stopCompass();
+// 지도를 손으로 움직이면 추적 해제 (비활성으로)
+function onMapDragDeactivate() {
+  if (locationMode >= 1) {
     locationMode = 0;
     const btn = document.getElementById('btnMyLocation');
-    btn.classList.add('tracking');
-    btn.classList.remove('compass-on');
+    btn.classList.remove('tracking', 'compass-on');
     updateDirectionIndicator();
   }
 }
 
-// ========== 나침반 (DeviceOrientation) ==========
-let compassWatchActive = false;
-let compassHandler = null;
-
-function startCompass() {
-  // iOS 13+ 는 권한 요청 필요
-  if (typeof DeviceOrientationEvent !== 'undefined' && 
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission()
-      .then(state => {
-        if (state === 'granted') {
-          attachCompassListener();
-          attachHeadingListener(); // 방향 감시도 시작
-        } else {
-          alert('나침반 권한이 거부되었습니다.\n설정에서 모션 및 방향 접근을 허용해주세요.');
-          // 모드A로 되돌리기
-          locationMode = 0;
-          const btn = document.getElementById('btnMyLocation');
-          btn.classList.add('tracking');
-          btn.classList.remove('compass-on');
-          updateDirectionIndicator();
-        }
-      })
-      .catch(err => {
-        console.error('나침반 권한 요청 실패:', err);
-        attachCompassListener();
-      });
+// ===== 나침반 버튼 =====
+function resetToNorth() {
+  if (currentMapRotation === 0 && locationMode !== 2) {
+    // 이미 정북 + 헤딩업 아님 → 나침반 모드로 전환 (바라보는 방향 자동회전)
+    locationMode = 2;
+    const btn = document.getElementById('btnMyLocation');
+    btn.classList.remove('tracking');
+    btn.classList.add('compass-on');
+    
+    if (myLocationMarker) {
+      map.setCenter(myLocationMarker.getPosition());
+    }
+    
+    updateDirectionIndicator();
   } else {
-    attachCompassListener();
-  }
-}
-
-function attachCompassListener() {
-  compassWatchActive = true;
-  compassHandler = function(e) {
-    if (locationMode !== 1 || !map) return;
+    // 회전된 상태 또는 헤딩업 → 정북으로 리셋 + 추적 모드로
+    applyMapRotation(0);
     
-    let heading = 0;
-    
-    if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-      heading = e.webkitCompassHeading;
-    } else if (e.alpha !== null && e.alpha !== undefined) {
-      heading = (360 - e.alpha) % 360;
+    if (locationMode === 2) {
+      locationMode = 1;
+      const btn = document.getElementById('btnMyLocation');
+      btn.classList.add('tracking');
+      btn.classList.remove('compass-on');
+      updateDirectionIndicator();
     }
-    
-    if (isTrackingLocation && currentHeading !== 0 && !isNaN(currentHeading)) {
-      heading = currentHeading;
-    }
-    
-    // 모드B: 지도 자동회전
-    applyMapRotation(heading);
-  };
-  
-  window.addEventListener('deviceorientation', compassHandler);
-}
-
-function stopCompass() {
-  compassWatchActive = false;
-  if (compassHandler) {
-    window.removeEventListener('deviceorientation', compassHandler);
-    compassHandler = null;
   }
 }
 
@@ -2463,16 +2463,14 @@ updateStats();
 
 if (typeof naver !== 'undefined' && naver.maps) {
   initMap();
-  // GPS 자동 시작 (파란점 항상 표시)
+  // GPS 자동 시작 (파란점 항상 표시, 모드0=비활성)
   initGPS();
-  document.getElementById('btnMyLocation').classList.add('tracking');
   // 지도 로드 후 공유 데이터 확인
   setTimeout(() => loadSharedData(), 500);
 } else {
   window.addEventListener('load', () => {
     initMap();
     initGPS();
-    document.getElementById('btnMyLocation').classList.add('tracking');
     setTimeout(() => loadSharedData(), 500);
   });
 }
