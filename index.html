@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 9단계</title>
+<title>배송 동선 - 12단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -371,7 +371,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v9</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v12</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76</span>
 </div>
 
@@ -1136,9 +1136,10 @@ function attachHeadingListener() {
     updateDirectionIndicator();
     
     // 모드2(헤딩업): 지도 자동회전
-    // "바라보는 방향이 위"가 되려면 지도를 -heading만큼 회전
+    // "바라보는 방향이 위"가 되려면: 지도를 heading만큼 회전
+    // heading=270(서) → rotate(270) → 서쪽이 위로
     if (locationMode === 2) {
-      applyMapRotation(-heading);
+      applyMapRotation(heading);
     }
   });
 }
@@ -1202,12 +1203,12 @@ function updateDirectionIndicator() {
   
   if (locationMode === 2) {
     // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
-    // 지도가 -heading으로 자동회전하므로 부채꼴은 항상 위(0도)를 가리키면
-    // 실제로 바라보는 방향으로 보임
+    // 지도가 -heading으로 자동회전하므로 부채꼴은 항상 위(0도) 고정
+    // → 화면상에서 항상 바라보는 방향(위쪽)을 가리킴
     if (arrow) arrow.style.display = 'none';
     if (cone) {
       cone.style.display = '';
-      if (conePath) conePath.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
+      if (conePath) conePath.setAttribute('transform', 'rotate(0,50,50)');
     }
   } else {
     // 모드0/1: 화살표 표시 (파란점 중심으로 공전), 부채꼴 숨김
