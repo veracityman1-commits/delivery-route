@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 8단계</title>
+<title>배송 동선 - 9단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -371,7 +371,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v8</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v9</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76</span>
 </div>
 
@@ -1135,9 +1135,10 @@ function attachHeadingListener() {
     // 화살표/부채꼴 방향 업데이트
     updateDirectionIndicator();
     
-    // 모드2(헤딩업): 지도도 자동회전
+    // 모드2(헤딩업): 지도 자동회전
+    // "바라보는 방향이 위"가 되려면 지도를 -heading만큼 회전
     if (locationMode === 2) {
-      applyMapRotation(heading);
+      applyMapRotation(-heading);
     }
   });
 }
@@ -1160,21 +1161,24 @@ function updateMyLocationMarker(latlng) {
 }
 
 function createMyLocationHTML() {
+  // 100x100 컨테이너, 파란점은 중앙(50,50)
+  // 화살표는 파란점 주위 반경 20px 원 위를 공전
+  // 부채꼴은 파란점 중심에서 위쪽으로 펼쳐짐
   return `<div id="myLocWrap" style="position:relative; width:100px; height:100px; pointer-events:none;">
     <!-- 부채꼴 시야범위 (모드2에서만 표시) -->
-    <svg id="myLocCone" width="100" height="100" viewBox="0 0 100 100" style="position:absolute; top:0; left:0; display:none;">
+    <svg id="myLocCone" width="100" height="100" viewBox="0 0 100 100" style="position:absolute; top:0; left:0; display:none; overflow:visible;">
       <defs>
-        <radialGradient id="coneGrad" cx="50%" cy="100%" r="70%" fx="50%" fy="100%">
-          <stop offset="0%" stop-color="rgba(66,133,244,0.25)"/>
-          <stop offset="100%" stop-color="rgba(66,133,244,0.02)"/>
-        </radialGradient>
+        <linearGradient id="coneGrad2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(66,133,244,0.03)"/>
+          <stop offset="100%" stop-color="rgba(66,133,244,0.2)"/>
+        </linearGradient>
       </defs>
-      <path d="M50,50 L20,5 A45,45 0 0,1 80,5 Z" fill="url(#coneGrad)" transform="rotate(0,50,50)"/>
+      <path id="conePath" d="M50,50 L15,-10 Q50,-25 85,-10 Z" fill="url(#coneGrad2)" transform="rotate(0,50,50)"/>
     </svg>
-    <!-- 방향 화살표 (모드1에서 표시) -->
-    <div id="myLocArrow" style="position:absolute; top:10px; left:50%; transform:translateX(-50%) rotate(0deg); transform-origin:center 40px;">
-      <svg width="16" height="20" viewBox="0 0 16 20">
-        <polygon points="8,0 16,16 8,12 0,16" fill="rgba(66,133,244,0.8)"/>
+    <!-- 방향 화살표 컨테이너 (모드0/1에서 표시, 파란점 주위를 공전) -->
+    <div id="myLocArrow" style="position:absolute; width:100px; height:100px; top:0; left:0;">
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <polygon id="arrowPoly" points="50,12 44,26 50,22 56,26" fill="rgba(66,133,244,0.85)" transform="rotate(0,50,50)"/>
       </svg>
     </div>
     <!-- 파란 점 그림자 -->
@@ -1187,26 +1191,31 @@ function createMyLocationHTML() {
 // ===== 방향 표시 업데이트 =====
 function updateDirectionIndicator() {
   const arrow = document.getElementById('myLocArrow');
+  const arrowPoly = document.getElementById('arrowPoly');
   const cone = document.getElementById('myLocCone');
+  const conePath = document.getElementById('conePath');
   if (!arrow && !cone) return;
   
-  // 지도 회전 보정: 지도가 CSS로 회전되므로 마커 방향도 보정
-  const adjustedHeading = deviceHeading - currentMapRotation;
+  // 지도가 CSS rotate 되어있으므로 마커도 같이 회전됨
+  // 따라서 마커 안에서의 방향 = deviceHeading + currentMapRotation (상쇄)
+  const adjustedHeading = deviceHeading + currentMapRotation;
   
   if (locationMode === 2) {
     // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
+    // 지도가 -heading으로 자동회전하므로 부채꼴은 항상 위(0도)를 가리키면
+    // 실제로 바라보는 방향으로 보임
     if (arrow) arrow.style.display = 'none';
     if (cone) {
       cone.style.display = '';
-      const path = cone.querySelector('path');
-      if (path) path.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
+      if (conePath) conePath.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
     }
   } else {
-    // 모드0/1: 화살표 표시, 부채꼴 숨김
+    // 모드0/1: 화살표 표시 (파란점 중심으로 공전), 부채꼴 숨김
     if (cone) cone.style.display = 'none';
     if (arrow) {
       arrow.style.display = '';
-      arrow.style.transform = `translateX(-50%) rotate(${adjustedHeading}deg)`;
+      // SVG polygon을 중심점(50,50) 기준으로 회전 → 자연스럽게 공전
+      if (arrowPoly) arrowPoly.setAttribute('transform', `rotate(${adjustedHeading},50,50)`);
     }
   }
 }
