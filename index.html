@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 14단계</title>
+<title>배송 동선 - 15단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -372,7 +372,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v14</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v15</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76 <span id="debugHeading" style="font-size:10px;opacity:0.7;"></span></span>
 </div>
 
@@ -1159,10 +1159,10 @@ function attachHeadingListener() {
     updateDirectionIndicator();
     
     // 모드2(헤딩업): 지도 자동회전
-    // "바라보는 방향이 위"가 되려면: 지도를 heading만큼 회전
-    // heading=270(서) → rotate(270) → 서쪽이 위로
+    // 서쪽(270) 바라볼 때 서쪽이 위 → rotate(90) = rotate(360-270)
+    // 동쪽(90) 바라볼 때 동쪽이 위 → rotate(270) = rotate(360-90)
     if (locationMode === 2) {
-      applyMapRotation(heading);
+      applyMapRotation(360 - heading);
     }
   });
 }
@@ -1220,9 +1220,9 @@ function updateDirectionIndicator() {
   const conePath = document.getElementById('conePath');
   if (!arrow && !cone) return;
   
-  // 지도가 CSS rotate 되어있으므로 마커도 같이 회전됨
-  // 따라서 마커 안에서의 방향 = deviceHeading + currentMapRotation (상쇄)
-  const adjustedHeading = deviceHeading + currentMapRotation;
+  // mapRotator가 회전하면 마커도 같이 회전됨
+  // 마커 내부에서 올바른 방향을 가리키려면 지도 회전을 빼야 함
+  const adjustedHeading = deviceHeading - currentMapRotation;
   
   if (locationMode === 2) {
     // 모드2(헤딩업): 부채꼴 표시, 화살표 숨김
