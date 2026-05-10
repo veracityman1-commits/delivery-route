@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 13단계</title>
+<title>배송 동선 - 14단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -173,14 +173,15 @@
   }
   
   /* 지도 */
-  #mapWrap { flex: 1; position: relative; overflow: hidden; }
-  #map { 
-    /* 회전 시 모서리 빈 공간 방지: 200%로 충분히 크게 */
-    width: 200%; height: 200%;
+  #mapOuter { flex: 1; position: relative; overflow: hidden; }
+  #mapRotator {
+    width: 142%; height: 142%;
     position: absolute;
-    top: -50%; left: -50%;
-    transition: none;
+    top: -21%; left: -21%;
+    transform-origin: center center;
   }
+  #mapWrap { width: 100%; height: 100%; position: relative; }
+  #map { width: 100%; height: 100%; }
   
   /* 지도 위 컨트롤 버튼들 */
   .map-controls {
@@ -371,7 +372,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v13</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v14</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76 <span id="debugHeading" style="font-size:10px;opacity:0.7;"></span></span>
 </div>
 
@@ -410,8 +411,12 @@
     <div id="addrList"></div>
   </div>
   
-  <div id="mapWrap">
-    <div id="map"></div>
+  <div id="mapOuter" style="flex:1; position:relative; overflow:hidden;">
+    <div id="mapRotator">
+      <div id="mapWrap">
+        <div id="map"></div>
+      </div>
+    </div>
     <div id="modeBanner">📍 지도를 클릭해서 핀을 찍으세요 (ESC로 취소)</div>
     
     <!-- 길게누르기 네비 팝업 -->
@@ -430,7 +435,7 @@
           <polygon points="12,22 9,13 12,15 15,13" fill="#ccc"/>
         </svg>
       </button>
-      <!-- 내 위치 버튼: 3단 토글 (OFF → 위치추적 → 위치+나침반 → OFF) -->
+      <!-- 내 위치 버튼: 3단 토글 -->
       <button class="map-btn" id="btnMyLocation" title="내 위치">
         <svg width="22" height="22" viewBox="0 0 22 22" id="locationIcon">
           <circle cx="11" cy="11" r="7" fill="none" stroke="#666" stroke-width="2"/>
@@ -531,28 +536,23 @@ function applyMapRotation(deg) {
   currentMapRotation = deg % 360;
   if (currentMapRotation < 0) currentMapRotation += 360;
   
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
-  
-  // 지도 200%로 확대된 상태에서 중심점 기준 회전
-  mapEl.style.transformOrigin = '50% 50%';
+  const rotator = document.getElementById('mapRotator');
+  if (!rotator) return;
   
   if (currentMapRotation === 0) {
-    mapEl.style.transform = 'none';
+    rotator.style.transform = 'none';
   } else {
-    mapEl.style.transform = `rotate(${currentMapRotation}deg)`;
+    rotator.style.transform = `rotate(${currentMapRotation}deg)`;
   }
   
   // 핀(마커)은 반대로 회전 → 항상 정방향 유지
   document.querySelectorAll('.pin-label').forEach(pin => {
-    if (currentMapRotation === 0) {
-      pin.style.cssText += '; transform: scale(1) !important;';
-    } else {
-      pin.style.cssText += `; transform: rotate(${-currentMapRotation}deg) scale(1) !important;`;
-    }
+    pin.style.transform = currentMapRotation === 0 
+      ? 'scale(1)' 
+      : `rotate(${-currentMapRotation}deg) scale(1)`;
   });
   
-  // 나침반 아이콘도 지도 회전에 따라 회전 (빨간 화살표가 항상 북쪽 가리킴)
+  // 나침반 아이콘
   const compassIcon = document.getElementById('compassIcon');
   if (compassIcon) {
     compassIcon.style.transform = currentMapRotation !== 0 ? `rotate(${-currentMapRotation}deg)` : '';
@@ -1074,6 +1074,20 @@ function initGPS() {
     maximumAge: 3000
   };
   
+  // 시작 시 즉시 내 위치로 이동
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const latlng = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
+      map.setCenter(latlng);
+      map.setZoom(16);
+      updateMyLocationMarker(latlng);
+      isTrackingLocation = true;
+    },
+    () => {},
+    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+  );
+  
+  // 지속적 위치 추적
   watchId = navigator.geolocation.watchPosition(
     (position) => {
       const lat = position.coords.latitude;
@@ -1099,7 +1113,7 @@ function initGPS() {
     options
   );
   
-  // 방향 감시 시작 (Android는 바로, iOS는 권한 필요)
+  // 방향 감시 시작
   startHeadingWatch();
 }
 
@@ -1904,8 +1918,8 @@ function naviFromModal() {
 // ========== 지도 길게누르기 팝업 ==========
 function showLongPressPopup(clientX, clientY, coord) {
   const popup = document.getElementById('longPressPopup');
-  const mapWrap = document.getElementById('mapWrap');
-  const rect = mapWrap.getBoundingClientRect();
+  const mapOuter = document.getElementById('mapOuter');
+  const rect = mapOuter.getBoundingClientRect();
   
   // 팝업 위치 계산 (화면 밖으로 나가지 않도록)
   let left = clientX - rect.left - 90;  // 팝업 중앙 정렬
