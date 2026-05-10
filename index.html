@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 5단계</title>
+<title>배송 동선 - 6단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -192,9 +192,18 @@
     width: 48px; height: 48px; cursor: pointer;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
     font-size: 20px; display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
   }
   .map-btn:active { transform: scale(0.95); }
-  .map-btn.active { background: #2196f3; color: white; }
+  .map-btn.active { background: white; }
+  
+  /* 내위치 버튼 상태별 색상 */
+  .map-btn.tracking svg circle,
+  .map-btn.tracking svg line { stroke: #4285f4; }
+  .map-btn.tracking svg circle:nth-child(2) { fill: #4285f4; }
+  .map-btn.compass-on svg circle,
+  .map-btn.compass-on svg line { stroke: #E53935; }
+  .map-btn.compass-on svg circle:nth-child(2) { fill: #E53935; }
   
   /* 핀 라벨 */
   .pin-label {
@@ -362,7 +371,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v5</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v6</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76</span>
 </div>
 
@@ -412,10 +421,26 @@
       <button class="popup-close-btn" onclick="closeLongPressPopup()">닫기</button>
     </div>
     
-    <!-- 지도 컨트롤 -->
+    <!-- 지도 컨트롤 (네이버 지도 스타일) -->
     <div class="map-controls">
-      <button class="map-btn" id="btnMyLocation" title="내 위치로">📍</button>
-      <button class="map-btn" id="btnRotate" title="지도 회전">🧭</button>
+      <!-- 나침반 버튼: 누르면 정북 리셋 -->
+      <button class="map-btn" id="btnCompass" title="정북으로">
+        <svg width="24" height="24" viewBox="0 0 24 24" id="compassIcon">
+          <polygon points="12,2 15,11 12,9 9,11" fill="#E53935"/>
+          <polygon points="12,22 9,13 12,15 15,13" fill="#ccc"/>
+        </svg>
+      </button>
+      <!-- 내 위치 버튼: 3단 토글 (OFF → 위치추적 → 위치+나침반 → OFF) -->
+      <button class="map-btn" id="btnMyLocation" title="내 위치">
+        <svg width="22" height="22" viewBox="0 0 22 22" id="locationIcon">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="#666" stroke-width="2"/>
+          <circle cx="11" cy="11" r="2.5" fill="#666"/>
+          <line x1="11" y1="0" x2="11" y2="4" stroke="#666" stroke-width="2"/>
+          <line x1="11" y1="18" x2="11" y2="22" stroke="#666" stroke-width="2"/>
+          <line x1="0" y1="11" x2="4" y2="11" stroke="#666" stroke-width="2"/>
+          <line x1="18" y1="11" x2="22" y2="11" stroke="#666" stroke-width="2"/>
+        </svg>
+      </button>
     </div>
   </div>
 </div>
@@ -497,7 +522,6 @@ let currentRouteMarkers = [];
 let myLocationMarker = null;
 let watchId = null;
 let isTrackingLocation = false;
-let rotateEnabled = false;
 let currentHeading = 0;
 
 // 지도 회전 (CSS transform 방식)
@@ -526,10 +550,10 @@ function applyMapRotation(deg) {
     }
   });
   
-  // 🧭 버튼 아이콘도 나침반처럼 회전
-  const rotateBtn = document.getElementById('btnRotate');
-  if (rotateBtn) {
-    rotateBtn.style.transform = currentMapRotation !== 0 ? `rotate(${-currentMapRotation}deg)` : '';
+  // 나침반 아이콘도 지도 회전에 따라 회전 (빨간 화살표가 항상 북쪽 가리킴)
+  const compassIcon = document.getElementById('compassIcon');
+  if (compassIcon) {
+    compassIcon.style.transform = currentMapRotation !== 0 ? `rotate(${-currentMapRotation}deg)` : '';
   }
 }
 
@@ -968,27 +992,69 @@ function loadRoutes() {
   } catch(e) { console.error('동선 복원 실패', e); }
 }
 
-// ========== GPS 위치 추적 ==========
-function startLocationTracking() {
+// ========== GPS 위치 추적 + 나침반 (네이버 지도 스타일 3단 토글) ==========
+// 상태: 0=OFF, 1=위치추적, 2=위치추적+나침반
+let locationMode = 0;
+
+function cycleLocationMode() {
+  locationMode++;
+  if (locationMode > 2) locationMode = 0;
+  
+  const btn = document.getElementById('btnMyLocation');
+  
+  switch(locationMode) {
+    case 0:
+      // OFF: GPS 해제, 나침반 해제, 정북 리셋
+      stopGPS();
+      stopCompass();
+      applyMapRotation(0);
+      btn.classList.remove('tracking', 'compass-on');
+      break;
+      
+    case 1:
+      // 위치추적: GPS만 ON
+      stopCompass();
+      applyMapRotation(0);
+      startGPS();
+      btn.classList.add('tracking');
+      btn.classList.remove('compass-on');
+      break;
+      
+    case 2:
+      // 위치추적 + 나침반: GPS + 나침반 자동회전
+      if (!isTrackingLocation) startGPS();
+      startCompass();
+      btn.classList.remove('tracking');
+      btn.classList.add('compass-on');
+      break;
+  }
+}
+
+function startGPS() {
   if (!navigator.geolocation) {
     alert('이 브라우저는 위치 서비스를 지원하지 않습니다.');
-    return;
-  }
-  
-  if (isTrackingLocation) {
-    stopLocationTracking();
+    locationMode = 0;
     return;
   }
   
   isTrackingLocation = true;
-  document.getElementById('btnMyLocation').classList.add('active');
   
-  // 내 위치 마커 생성 (파란 점)
   const options = {
     enableHighAccuracy: true,
     timeout: 5000,
     maximumAge: 0
   };
+  
+  // 먼저 현재 위치로 한번 이동
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const latlng = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
+      map.setCenter(latlng);
+      map.setZoom(16);
+    },
+    () => {},
+    options
+  );
   
   watchId = navigator.geolocation.watchPosition(
     (position) => {
@@ -996,18 +1062,21 @@ function startLocationTracking() {
       const lng = position.coords.longitude;
       const latlng = new naver.maps.LatLng(lat, lng);
       
-      // 방향 정보 (나침반)
-      if (position.coords.heading !== null && position.coords.heading !== undefined) {
+      // 방향 정보
+      if (position.coords.heading !== null && position.coords.heading !== undefined && !isNaN(position.coords.heading)) {
         currentHeading = position.coords.heading;
       }
       
-      // 내 위치 마커 업데이트
+      // 내 위치 마커 업데이트 (파란 점 + 방향 화살표)
       if (!myLocationMarker) {
         myLocationMarker = new naver.maps.Marker({
           position: latlng,
           map: map,
           icon: {
-            content: `<div style="width:20px;height:20px;border-radius:50%;background:#4285f4;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+            content: `<div id="myLocDot" style="position:relative;">
+              <div style="width:20px;height:20px;border-radius:50%;background:#4285f4;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>
+              <div id="myLocArrow" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%) rotate(0deg);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #4285f4;display:none;"></div>
+            </div>`,
             anchor: new naver.maps.Point(10, 10)
           },
           zIndex: 1000
@@ -1016,12 +1085,11 @@ function startLocationTracking() {
         myLocationMarker.setPosition(latlng);
       }
       
-      // 지도 중심 이동 (처음 한 번 또는 계속 추적)
+      // 위치추적 모드: 지도 중심 따라가기
       map.setCenter(latlng);
       
-      // 나침반(DeviceOrientation)이 활성 상태면 heading은 나침반 핸들러가 처리
-      // 나침반 비활성 + rotateEnabled일 때만 GPS heading 직접 적용
-      if (rotateEnabled && !compassWatchActive && currentHeading !== 0) {
+      // 나침반 모드(mode 2)에서 GPS heading 보조 적용
+      if (locationMode === 2 && !compassWatchActive && currentHeading !== 0) {
         applyMapRotation(currentHeading);
       }
     },
@@ -1032,13 +1100,15 @@ function startLocationTracking() {
         msg = '위치 권한이 거부되었습니다.\n설정에서 위치 권한을 허용해주세요.';
       }
       alert(msg);
-      stopLocationTracking();
+      locationMode = 0;
+      document.getElementById('btnMyLocation').classList.remove('tracking', 'compass-on');
+      stopGPS();
     },
     options
   );
 }
 
-function stopLocationTracking() {
+function stopGPS() {
   if (watchId !== null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -1050,28 +1120,19 @@ function stopLocationTracking() {
   }
   
   isTrackingLocation = false;
-  document.getElementById('btnMyLocation').classList.remove('active');
-  
-  // 나침반이 활성 상태가 아닐 때만 정북 리셋
-  if (!rotateEnabled) {
-    applyMapRotation(0);
-  }
 }
 
-function toggleRotate() {
-  rotateEnabled = !rotateEnabled;
+// 나침반 버튼: 정북으로 리셋
+function resetToNorth() {
+  applyMapRotation(0);
   
-  if (rotateEnabled) {
-    document.getElementById('btnRotate').classList.add('active');
-    
-    // 나침반(DeviceOrientation) 자동연동 시작
-    startCompass();
-  } else {
-    document.getElementById('btnRotate').classList.remove('active');
-    
-    // 나침반 연동 해제 + 정북으로 리셋
+  // 나침반 모드였으면 위치추적 모드로 다운그레이드
+  if (locationMode === 2) {
     stopCompass();
-    applyMapRotation(0);
+    locationMode = 1;
+    const btn = document.getElementById('btnMyLocation');
+    btn.classList.add('tracking');
+    btn.classList.remove('compass-on');
   }
 }
 
@@ -1089,17 +1150,18 @@ function startCompass() {
           attachCompassListener();
         } else {
           alert('나침반 권한이 거부되었습니다.\n설정에서 모션 및 방향 접근을 허용해주세요.');
-          rotateEnabled = false;
-          document.getElementById('btnRotate').classList.remove('active');
+          // 나침반 모드 실패 → 위치추적 모드로 다운그레이드
+          locationMode = 1;
+          const btn = document.getElementById('btnMyLocation');
+          btn.classList.add('tracking');
+          btn.classList.remove('compass-on');
         }
       })
       .catch(err => {
         console.error('나침반 권한 요청 실패:', err);
-        // 권한 API 실패 시에도 리스너 시도 (일부 브라우저)
         attachCompassListener();
       });
   } else {
-    // Android, 데스크탑 등 권한 요청 불필요
     attachCompassListener();
   }
 }
@@ -1107,7 +1169,7 @@ function startCompass() {
 function attachCompassListener() {
   compassWatchActive = true;
   compassHandler = function(e) {
-    if (!rotateEnabled || !map) return;
+    if (locationMode !== 2 || !map) return;
     
     let heading = 0;
     
@@ -1125,7 +1187,7 @@ function attachCompassListener() {
       heading = currentHeading;
     }
     
-    // 지도 회전 적용 (진행방향이 위로) - CSS transform 방식
+    // 지도 회전 적용 - CSS transform 방식
     applyMapRotation(heading);
   };
   
@@ -2255,11 +2317,11 @@ document.getElementById('btnDrawRoute').addEventListener('click', () => {
 // 신규 추가 버튼
 document.getElementById('btnAddNew').addEventListener('click', startAddingNew);
 
-// GPS 위치 추적 버튼
-document.getElementById('btnMyLocation').addEventListener('click', startLocationTracking);
+// GPS 위치 추적 버튼 (3단 토글: OFF → 위치추적 → 위치+나침반 → OFF)
+document.getElementById('btnMyLocation').addEventListener('click', cycleLocationMode);
 
-// 지도 회전 버튼
-document.getElementById('btnRotate').addEventListener('click', toggleRotate);
+// 나침반 버튼 (정북 리셋)
+document.getElementById('btnCompass').addEventListener('click', resetToNorth);
 
 document.getElementById('btnModalSave').addEventListener('click', saveModal);
 document.getElementById('btnModalCancel').addEventListener('click', closeModal);
