@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 18단계</title>
+<title>배송 동선 - 21단계</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -175,7 +175,7 @@
   /* 지도 */
   #mapOuter { 
     flex: 1; position: relative; overflow: hidden;
-    background: #f0ede6; /* 지도 배경색과 유사 - 회전 시 빈 공간 */
+    background: #f0ede6;
   }
   #mapRotator {
     width: 100%; height: 100%;
@@ -375,7 +375,7 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v18</span></h1>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">v21</span></h1>
   <span class="stats">완료 <b id="doneCount">0</b>/76 <span id="debugHeading" style="font-size:10px;opacity:0.7;"></span></span>
 </div>
 
@@ -600,39 +600,66 @@ function initMap() {
     zoomControlOptions: {
       style: naver.maps.ZoomControlStyle.SMALL,
       position: naver.maps.Position.RIGHT_CENTER
-    }
+    },
+    // 기본 핀치줌 비활성화 (직접 처리)
+    pinchZoom: false
   });
   
-  // ========== 두 손가락 회전 (CSS transform 방식) ==========
-  // 네이버 웹 SDK는 heading 미지원 → 지도 컨테이너를 CSS로 회전
+  // ========== 두 손가락: 회전 + 줌 (동시 처리) ==========
   const mapDiv = document.getElementById('map');
   let initialAngle = null;
   let initialRotation = 0;
+  let initialPinchDist = null;
+  let initialZoom = 15;
   let isRotating = false;
+  let lastZoomTime = 0;
   
   function getTouchAngle(touch1, touch2) {
     return Math.atan2(touch2.clientY - touch1.clientY, touch2.clientX - touch1.clientX) * 180 / Math.PI;
+  }
+  
+  function getTouchDist(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
   }
   
   mapDiv.addEventListener('touchstart', function(e) {
     if (e.touches.length === 2) {
       initialAngle = getTouchAngle(e.touches[0], e.touches[1]);
       initialRotation = currentMapRotation;
+      initialPinchDist = getTouchDist(e.touches[0], e.touches[1]);
+      initialZoom = map.getZoom();
       isRotating = true;
     }
   }, { passive: true });
   
   mapDiv.addEventListener('touchmove', function(e) {
     if (isRotating && e.touches.length === 2) {
+      // 회전 처리
       const currentAngle = getTouchAngle(e.touches[0], e.touches[1]);
       let delta = currentAngle - initialAngle;
       
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
       
-      // 방향: 손가락 회전 방향과 지도 회전 방향 일치
-      // 민감도: 0.7배
       applyMapRotation(initialRotation + delta * 0.7);
+      
+      // 줌 처리 (항상 지도 중심 기준)
+      const currentDist = getTouchDist(e.touches[0], e.touches[1]);
+      if (initialPinchDist > 0) {
+        const scale = currentDist / initialPinchDist;
+        // 줌 레벨 변화량 계산 (로그 스케일)
+        const zoomDelta = Math.log2(scale);
+        const newZoom = Math.round((initialZoom + zoomDelta) * 2) / 2; // 0.5단위
+        
+        // 너무 자주 호출 방지
+        const now = Date.now();
+        if (now - lastZoomTime > 50 && newZoom !== map.getZoom()) {
+          map.setZoom(newZoom, false); // 중심 고정 줌
+          lastZoomTime = now;
+        }
+      }
     }
   }, { passive: true });
   
@@ -640,6 +667,7 @@ function initMap() {
     if (e.touches.length < 2) {
       isRotating = false;
       initialAngle = null;
+      initialPinchDist = null;
     }
   }, { passive: true });
   
