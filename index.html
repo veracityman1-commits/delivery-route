@@ -212,20 +212,15 @@
   /* 핀 라벨 */
   .pin-label {
     background: #d9534f; color: white;
-    width: 30px !important; height: 30px !important; border-radius: 50%;
+    width: 30px; height: 30px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-weight: bold; font-size: 13px;
     border: 3px solid white;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    /* 줌 변경 시 크기 고정 보장 */
-    transform: scale(1);
-    -webkit-transform: scale(1);
-    min-width: 30px; max-width: 30px;
-    min-height: 30px; max-height: 30px;
+    transition: width 0.15s, height 0.15s, font-size 0.15s, border-width 0.15s;
     /* 모바일 웹뷰 렌더링 안정화 */
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
-    contain: layout style size;
   }
   .pin-label.done { background: #5cb85c; }
   
@@ -551,8 +546,8 @@ function applyMapRotation(deg) {
   // 핀(마커)은 반대로 회전 → 항상 정방향 유지
   document.querySelectorAll('.pin-label').forEach(pin => {
     pin.style.transform = currentMapRotation === 0 
-      ? 'scale(1)' 
-      : `rotate(${-currentMapRotation}deg) scale(1)`;
+      ? '' 
+      : `rotate(${-currentMapRotation}deg)`;
   });
   
   // 나침반 아이콘
@@ -590,6 +585,32 @@ function saveOrder() {
   } catch(e) { console.error('순서 저장 실패', e); }
 }
 
+// ========== 줌 레벨별 핀 크기 자동 조절 ==========
+// 줌이 클수록(확대) 핀이 작아지고, 줌이 작을수록(축소) 핀이 커짐
+function getPinSizeByZoom(zoom) {
+  // zoom: 8 ~ 21 (네이버 지도 범위)
+  if (zoom >= 18) return { w: 20, fs: 9, border: 2 };   // 매우 확대 (건물)
+  if (zoom >= 17) return { w: 24, fs: 11, border: 2 };  // 확대 (건물 인접)
+  if (zoom >= 16) return { w: 28, fs: 12, border: 3 };  // 기본
+  if (zoom >= 15) return { w: 30, fs: 13, border: 3 };  // 약간 축소
+  if (zoom >= 14) return { w: 26, fs: 11, border: 2 };  // 동네 단위
+  if (zoom >= 12) return { w: 20, fs: 9, border: 2 };   // 시 단위
+  return { w: 14, fs: 7, border: 1 };                    // 광역
+}
+
+function applyPinSizeForZoom() {
+  if (!map) return;
+  const zoom = map.getZoom();
+  const size = getPinSizeByZoom(zoom);
+  
+  document.querySelectorAll('.pin-label').forEach(pin => {
+    pin.style.width = size.w + 'px';
+    pin.style.height = size.w + 'px';
+    pin.style.fontSize = size.fs + 'px';
+    pin.style.borderWidth = size.border + 'px';
+  });
+}
+
 // ========== 지도 초기화 ==========
 function initMap() {
   map = new naver.maps.Map('map', {
@@ -604,6 +625,14 @@ function initMap() {
     // 기본 핀치줌 비활성화 (직접 처리)
     pinchZoom: false
   });
+  
+  // 줌 변경 시 핀 크기 자동 조절
+  naver.maps.Event.addListener(map, 'zoom_changed', function() {
+    applyPinSizeForZoom();
+  });
+  
+  // 초기 크기 적용 (약간의 딜레이로 마커 렌더링 후 적용)
+  setTimeout(applyPinSizeForZoom, 100);
   
   // ========== 두 손가락: 회전 + 줌 (동시 처리) ==========
   const mapDiv = document.getElementById('map');
@@ -943,6 +972,13 @@ function createMarker(num, latlng) {
   });
   
   markers[num] = marker;
+  
+  // 새 핀에도 현재 줌 레벨 크기 즉시 적용
+  setTimeout(() => {
+    if (typeof applyPinSizeForZoom === 'function') {
+      applyPinSizeForZoom();
+    }
+  }, 50);
 }
 
 // ========== 동선 그리기 ==========
