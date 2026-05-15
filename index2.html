@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
-<title>배송 동선 - 베이스라인</title>
+<title>배송 동선 - 베이스라인 v2</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Malgun Gothic', sans-serif; height: 100vh; overflow: hidden; }
@@ -150,6 +150,48 @@
   }
   .pin-label.done { background: #5cb85c; }
   
+  /* 내 위치 마커 (파란점 + 부채꼴) */
+  .my-location-container {
+    position: relative;
+    width: 60px; height: 60px;
+    pointer-events: none;
+  }
+  /* 부채꼴 (방향 표시) - SVG로 그리지만 회전은 컨테이너 div가 함 */
+  .my-location-fan {
+    position: absolute;
+    top: 0; left: 0;
+    width: 60px; height: 60px;
+    transform-origin: center center;
+    transition: transform 0.3s ease-out;
+    /* 부채꼴이 안보일 때 (방향 정보 없을 때) */
+    opacity: 0;
+  }
+  .my-location-fan.active {
+    opacity: 1;
+  }
+  /* 파란점 (위치) */
+  .my-location-dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #4285f4;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    z-index: 2;
+  }
+  /* 파란점 주변 반투명 원 (정확도 표시 느낌) */
+  .my-location-halo {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(66, 133, 244, 0.15);
+    z-index: 1;
+  }
+  
   /* 모드 안내 */
   #modeBanner {
     position: absolute; top: 10px; left: 50%;
@@ -295,8 +337,8 @@
 
 <div id="header">
   <button id="btnToggleSidebar">☰</button>
-  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">baseline</span></h1>
-  <span class="stats">완료 <b id="doneCount">0</b></span>
+  <h1>🚚 배송 동선 <span style="font-size:11px;opacity:0.7;">baseline-v2</span></h1>
+  <span class="stats">완료 <b id="doneCount">0</b> <span id="headingSource" style="font-size:10px;opacity:0.7;margin-left:6px;"></span></span>
 </div>
 
 <div id="main">
@@ -787,20 +829,151 @@ function loadRoutes() {
   } catch(e) {}
 }
 
-// ========== GPS (단순 - 파란점 표시 + 1회 클릭으로 이동) ==========
+// ========== GPS + 방향 표시 (도와줘 스타일 부채꼴) ==========
+// 이동 중이면 GPS heading, 정지 시 나침반 자동 전환
+
+let lastGpsHeading = null;        // GPS로 받은 마지막 방향 (이동 중일 때만 유효)
+let lastGpsSpeed = 0;             // 이동 속도 (m/s)
+let deviceHeading = null;         // 폰 나침반 방향
+let headingListenerAttached = false;
+let currentHeading = null;        // 실제로 부채꼴에 적용되는 방향
+let headingSource = '-';          // 'GPS' or '나침반' or '-'
+let lastHeadingUpdate = 0;        // 마지막 부채꼴 회전 시간 (떨림 방지)
+
+// 이동 중 판단 기준 (속도 m/s)
+const MOVING_SPEED_THRESHOLD = 1.0;  // 약 3.6km/h 이상이면 "이동 중"으로 판정
+
 function initGPS() {
-  if (!navigator.geolocation) return;
+  if (!navigator.geolocation) {
+    console.error('Geolocation 미지원');
+    return;
+  }
   
-  // 지속적 위치 추적 (파란점만 갱신, 지도는 따라가지 않음)
+  // 지속적 위치 추적
   watchId = navigator.geolocation.watchPosition(
-    (position) => {
-      const latlng = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
-      lastKnownPosition = latlng;
-      updateMyLocationMarker(latlng);
-    },
+    onGpsUpdate,
     (error) => { console.error('GPS:', error); },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+    { 
+      enableHighAccuracy: true, 
+      timeout: 10000, 
+      maximumAge: 1000   // 1초 이상 오래된 위치는 무시 (최신 위치 우선)
+    }
   );
+  
+  // DeviceOrientation 시도 (안드로이드는 권한 없이 가능, iOS는 사용자 제스처 필요)
+  tryAttachHeadingListener();
+}
+
+function onGpsUpdate(position) {
+  const lat = position.coords.latitude;
+  const lng = position.coords.longitude;
+  const latlng = new naver.maps.LatLng(lat, lng);
+  lastKnownPosition = latlng;
+  
+  // GPS heading은 이동 중일 때만 유효
+  const heading = position.coords.heading;
+  const speed = position.coords.speed || 0;
+  lastGpsSpeed = speed;
+  
+  if (heading !== null && heading !== undefined && !isNaN(heading) && speed >= MOVING_SPEED_THRESHOLD) {
+    lastGpsHeading = heading;
+  }
+  
+  // 부채꼴 방향 갱신
+  updateHeading();
+  
+  // 마커 위치 갱신
+  updateMyLocationMarker(latlng);
+}
+
+// 나침반 리스너 부착 시도
+function tryAttachHeadingListener() {
+  if (headingListenerAttached) return;
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  
+  // iOS 13+: 사용자 제스처 필요 → 권한 요청 함수만 준비
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS는 내 위치 버튼 클릭 시 권한 요청 (사용자 제스처)
+    return;
+  }
+  
+  // Android: 권한 없이 바로 부착 가능
+  attachHeadingListener();
+}
+
+function attachHeadingListener() {
+  if (headingListenerAttached) return;
+  headingListenerAttached = true;
+  
+  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  window.addEventListener('deviceorientation', handleOrientation, true);
+}
+
+function handleOrientation(e) {
+  let heading = null;
+  
+  // iOS Safari: webkitCompassHeading이 가장 정확 (0=북, 시계방향)
+  if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    heading = e.webkitCompassHeading;
+  }
+  // Android Chrome: alpha는 반시계 방향이므로 변환 필요
+  else if (e.alpha !== null && e.alpha !== undefined) {
+    // deviceorientationabsolute가 더 정확하지만 일부 기기는 deviceorientation만 지원
+    heading = (360 - e.alpha) % 360;
+  }
+  
+  if (heading !== null && !isNaN(heading)) {
+    deviceHeading = heading;
+    updateHeading();
+  }
+}
+
+// 실제 사용할 방향 결정 (GPS vs 나침반 자동 전환)
+function updateHeading() {
+  let newHeading = null;
+  let newSource = '-';
+  
+  // 이동 중(속도 임계값 이상)이면 GPS heading 우선
+  if (lastGpsSpeed >= MOVING_SPEED_THRESHOLD && lastGpsHeading !== null) {
+    newHeading = lastGpsHeading;
+    newSource = 'GPS';
+  }
+  // 정지 상태면 나침반 사용
+  else if (deviceHeading !== null) {
+    newHeading = deviceHeading;
+    newSource = '나침반';
+  }
+  // 둘 다 없으면 마지막 GPS heading이라도 유지 (멈춰있을 때 방향 안 잃도록)
+  else if (lastGpsHeading !== null) {
+    newHeading = lastGpsHeading;
+    newSource = 'GPS(이전)';
+  }
+  
+  if (newHeading === null) return;
+  
+  // 떨림 방지: 너무 잦은 업데이트 차단 (50ms)
+  const now = Date.now();
+  if (now - lastHeadingUpdate < 50) return;
+  lastHeadingUpdate = now;
+  
+  currentHeading = newHeading;
+  headingSource = newSource;
+  applyFanRotation(newHeading);
+  
+  // 디버그 표시 업데이트 (헤더 우측)
+  const indicator = document.getElementById('headingSource');
+  if (indicator) {
+    indicator.textContent = `${newSource} ${Math.round(newHeading)}°`;
+  }
+}
+
+// 부채꼴 회전 적용
+function applyFanRotation(heading) {
+  const fan = document.querySelector('.my-location-fan');
+  if (fan) {
+    fan.style.transform = `rotate(${heading}deg)`;
+    fan.classList.add('active');
+  }
 }
 
 function updateMyLocationMarker(latlng) {
@@ -809,26 +982,59 @@ function updateMyLocationMarker(latlng) {
       position: latlng,
       map: map,
       icon: {
-        content: `<div style="position:relative; width:40px; height:40px; pointer-events:none;">
-          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:36px; height:36px; border-radius:50%; background:rgba(66,133,244,0.12);"></div>
-          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:16px; height:16px; border-radius:50%; background:#4285f4; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
-        </div>`,
-        anchor: new naver.maps.Point(20, 20)
+        content: createMyLocationHTML(),
+        anchor: new naver.maps.Point(30, 30)
       },
       zIndex: 1000
     });
+    
+    // 마커 생성 직후 부채꼴에 현재 방향 적용
+    if (currentHeading !== null) {
+      setTimeout(() => applyFanRotation(currentHeading), 50);
+    }
   } else {
     myLocationMarker.setPosition(latlng);
   }
 }
 
-// 내 위치 버튼: 1회 클릭으로 내 위치로 이동 (그게 끝)
+function createMyLocationHTML() {
+  // SVG 부채꼴: 위쪽(12시 방향)으로 빛이 퍼지는 모양
+  // 회전 시 12시 = 북쪽 기준으로 heading 도만큼 회전
+  return `<div class="my-location-container">
+    <div class="my-location-fan">
+      <svg width="60" height="60" viewBox="0 0 60 60">
+        <defs>
+          <radialGradient id="fanGradient" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#4285f4" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#4285f4" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <!-- 부채꼴: 중심(30,30)에서 위쪽으로 펼쳐짐, 각도 약 60도 -->
+        <path d="M 30 30 L 14 6 A 30 30 0 0 1 46 6 Z" fill="url(#fanGradient)"/>
+      </svg>
+    </div>
+    <div class="my-location-halo"></div>
+    <div class="my-location-dot"></div>
+  </div>`;
+}
+
+// 내 위치 버튼: 1회 클릭으로 내 위치로 이동 + iOS 나침반 권한 요청
 function moveToMyLocation() {
+  // iOS 나침반 권한 요청 (사용자 제스처 안에서)
+  if (!headingListenerAttached && 
+      typeof DeviceOrientationEvent !== 'undefined' && 
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(state => {
+        if (state === 'granted') attachHeadingListener();
+      })
+      .catch(err => console.error('나침반 권한:', err));
+  }
+  
   if (lastKnownPosition) {
     map.setCenter(lastKnownPosition);
     map.setZoom(Math.max(map.getZoom(), 16));
   } else {
-    // 아직 GPS 없으면 한 번 시도
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const latlng = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
