@@ -360,6 +360,17 @@
         </div>
         
         <div id="zoneList" style="margin-top: 20px;"></div>
+        
+        <!-- 주소 캐시 상태 -->
+        <div id="cacheStatus" style="margin-top: 20px; padding: 12px 15px; background: #e7f5ff; border-radius: 8px; border-left: 4px solid #1971c2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div style="font-size: 13px; color: #1971c2;">
+            💾 <strong>저장된 주소 캐시:</strong> <span id="cacheCount">0</span>개
+            <span style="opacity: 0.7; font-size: 12px;">(이미 검색했던 주소는 재검색 없이 빠르게 처리됩니다)</span>
+          </div>
+          <button class="btn btn-secondary" onclick="clearCache()" style="padding: 6px 12px; font-size: 12px;">
+            🗑️ 캐시 초기화
+          </button>
+        </div>
       </div>
       
       <!-- 2단계: 비밀번호 설정 -->
@@ -446,6 +457,45 @@
   <script>
     // 전역 변수
     let zones = {}; // {zoneName: {csvData: [...], addresses: [...], pinsData: {}}}
+    
+    // ========== 주소 캐시 (localStorage) ==========
+    const CACHE_KEY = 'geocode_cache_v1';
+    
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch(e) {
+        console.error('캐시 로드 실패', e);
+        return {};
+      }
+    }
+    
+    function saveCache(cache) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+      } catch(e) {
+        console.error('캐시 저장 실패', e);
+      }
+    }
+    
+    function updateCacheStatus() {
+      const cache = loadCache();
+      const count = Object.keys(cache).length;
+      const el = document.getElementById('cacheCount');
+      if (el) el.textContent = count;
+    }
+    
+    function clearCache() {
+      if (!confirm('저장된 주소 캐시를 모두 삭제할까요?\n다음 변환 시 모든 주소를 다시 검색해야 합니다.')) return;
+      localStorage.removeItem(CACHE_KEY);
+      updateCacheStatus();
+      alert('✅ 캐시가 초기화되었습니다.');
+    }
+    
+    // 페이지 로드 시 캐시 카운트 표시
+    window.addEventListener('DOMContentLoaded', updateCacheStatus);
+    
     // 토큰 자동 불러오기
     const savedToken = localStorage.getItem('github_token');
     if (savedToken) {
@@ -592,14 +642,37 @@
       
       let successCount = 0;
       let failCount = 0;
+      let cacheHitCount = 0;  // 캐시에서 찾은 개수
+      let apiCallCount = 0;   // 실제 API 호출 개수
       let failedList = [];
+      
+      // 캐시 로드
+      const cache = loadCache();
       
       for (const zoneName of zoneNames) {
         const zone = zones[zoneName];
         
         for (const addr of zone.csvData) {
           try {
-            const coords = await geocodeAddress(addr.road);
+            let coords = null;
+            const cacheKey = addr.road.trim();
+            
+            // 1. 캐시 확인
+            if (cache[cacheKey]) {
+              coords = cache[cacheKey];
+              cacheHitCount++;
+            } else {
+              // 2. 캐시에 없으면 API 호출
+              coords = await geocodeAddress(addr.road);
+              apiCallCount++;
+              
+              // 성공한 결과를 캐시에 저장
+              if (coords) {
+                cache[cacheKey] = coords;
+              }
+              
+              await sleep(200); // API 호출 시에만 대기
+            }
             
             if (coords) {
               // addresses 배열에 추가
@@ -636,12 +709,17 @@
           const percent = Math.round((processedAddresses / totalAddresses) * 100);
           document.getElementById('progressFill').style.width = percent + '%';
           document.getElementById('progressFill').textContent = percent + '%';
-          document.getElementById('progressText').textContent = 
-            `${processedAddresses} / ${totalAddresses} 주소 처리 중... (성공: ${successCount}, 실패: ${failCount})`;
-          
-          await sleep(200); // API 부하 방지
+          document.getElementById('progressText').innerHTML = 
+            `${processedAddresses} / ${totalAddresses} 주소 처리 중...<br>
+             <span style="color:#2b8a3e;">💾 캐시 사용: ${cacheHitCount}건</span> · 
+             <span style="color:#1971c2;">🔍 API 호출: ${apiCallCount}건</span> · 
+             <span style="color:#d9534f;">❌ 실패: ${failCount}건</span>`;
         }
       }
+      
+      // 모든 작업 끝나면 캐시 저장
+      saveCache(cache);
+      updateCacheStatus();
       
       document.getElementById('progressSection').style.display = 'none';
       document.getElementById('step4').style.display = 'block';
@@ -674,6 +752,13 @@
           </div>`;
       }
       
+      // 캐시 효과 메시지
+      const cacheStatsHtml = (cacheHitCount > 0) 
+        ? `<div style="margin-top:10px; padding:10px; background:#e7f5ff; border-radius:6px; font-size:13px; color:#1971c2;">
+            💾 <strong>캐시 효과:</strong> ${cacheHitCount}건은 캐시에서 즉시 처리, ${apiCallCount}건만 새로 검색 (시간 약 ${Math.round(cacheHitCount * 0.2)}초 단축)
+           </div>` 
+        : '';
+      
       if (successCount === 0) {
         document.getElementById('successMessage').innerHTML = 
           `<span style="color:#d9534f">⚠️ 주소 검색이 모두 실패했습니다! (${failCount}건 실패)<br>네이버 클라우드 설정을 확인하세요.<br>F12 콘솔에서 CORS 에러를 확인하세요.</span>`;
@@ -682,12 +767,14 @@
       } else if (failCount > 0) {
         document.getElementById('successMessage').innerHTML = 
           `⚠️ 일부 주소 검색 실패<br>성공: ${successCount}건 / 실패: ${failCount}건
+          ${cacheStatsHtml}
           ${failListHtml}`;
         document.getElementById('successMessage').style.display = 'block';
         document.getElementById('successMessage').style.background = '#fff3cd';
       } else {
         document.getElementById('successMessage').innerHTML = 
-          `✅ <strong>성공!</strong> 모든 주소 검색이 완료되었습니다 (${successCount}건)`;
+          `✅ <strong>성공!</strong> 모든 주소 검색이 완료되었습니다 (${successCount}건)
+          ${cacheStatsHtml}`;
         document.getElementById('successMessage').style.display = 'block';
       }
     }
