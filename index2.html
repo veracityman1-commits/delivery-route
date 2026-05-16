@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -124,6 +123,16 @@
     flex: 1; position: relative; overflow: hidden;
     background: #f0ede6;
   }
+  /* 회전 레이어: 화면보다 크게 만들어서 회전 시 모서리 안 비게 */
+  #mapRotator {
+    position: absolute;
+    top: 50%; left: 50%;
+    /* 대각선 길이만큼 키워야 어느 각도로 돌려도 화면을 다 덮음 (약 1.5배) */
+    width: 150%; height: 150%;
+    transform: translate(-50%, -50%) rotate(0deg);
+    transform-origin: center center;
+    transition: transform 0.4s ease-out;
+  }
   #map { width: 100%; height: 100%; }
   
   /* 지도 위 컨트롤 버튼들 */
@@ -139,6 +148,25 @@
     transition: background 0.2s;
   }
   .map-btn:active { transform: scale(0.95); }
+  
+  /* 트래킹 모드 ON: 파란색 배경 + 흰색 아이콘 */
+  .map-btn.tracking-on {
+    background: #4285f4;
+  }
+  .map-btn.tracking-on svg circle,
+  .map-btn.tracking-on svg line {
+    stroke: white;
+  }
+  .map-btn.tracking-on svg circle:nth-child(2) {
+    fill: white;
+  }
+  /* 헤딩업 모드 ON: 파란색 배경 + 흰색 화살표 */
+  .map-btn.headingup-on {
+    background: #4285f4;
+  }
+  .map-btn.headingup-on svg polygon {
+    fill: white;
+  }
   
   /* 핀 라벨 (고정 크기 - 회전/줌 영향 안 받음) */
   .pin-label {
@@ -371,7 +399,9 @@
   </div>
   
   <div id="mapOuter">
-    <div id="map"></div>
+    <div id="mapRotator">
+      <div id="map"></div>
+    </div>
     <div id="modeBanner">📍 지도를 클릭해서 핀을 찍으세요 (ESC로 취소)</div>
     
     <!-- 길게누르기 네비 팝업 -->
@@ -381,8 +411,15 @@
       <button class="popup-close-btn" onclick="closeLongPressPopup()">닫기</button>
     </div>
     
-    <!-- 지도 컨트롤 (단순화: 내 위치 버튼만) -->
+    <!-- 지도 컨트롤 -->
     <div class="map-controls">
+      <!-- 헤딩업 버튼: 지도가 진행방향으로 회전 -->
+      <button class="map-btn" id="btnHeadingUp" title="헤딩업 (진행방향)">
+        <svg width="24" height="24" viewBox="0 0 24 24">
+          <polygon points="12,3 17,20 12,16 7,20" fill="#888"/>
+        </svg>
+      </button>
+      <!-- 내 위치 버튼 -->
       <button class="map-btn" id="btnMyLocation" title="내 위치">
         <svg width="22" height="22" viewBox="0 0 22 22">
           <circle cx="11" cy="11" r="7" fill="none" stroke="#4285f4" stroke-width="2"/>
@@ -480,6 +517,10 @@ let currentRouteMarkers = [];
 let myLocationMarker = null;
 let watchId = null;
 let lastKnownPosition = null;
+let isTrackingMode = false;  // 트래킹 모드 (ON이면 지도가 GPS 따라감)
+let isHeadingUp = false;     // 헤딩업 모드 (ON이면 지도가 진행방향으로 회전)
+let currentMapRotation = 0;  // 현재 지도 회전 각도
+let lastMapRotateTime = 0;   // 지도 회전 떨림 방지
 
 // 구역 필터
 let visibleZones = {};
@@ -706,9 +747,18 @@ function createMarker(num, latlng) {
   });
   
   markers[num] = marker;
+  
+  // 헤딩업으로 지도가 회전된 상태면 새 핀도 역회전 적용 (숫자 똑바로)
+  if (currentMapRotation !== 0) {
+    setTimeout(() => {
+      const el = marker.getElement && marker.getElement();
+      if (el) {
+        const label = el.querySelector('.pin-label');
+        if (label) label.style.transform = `rotate(${-currentMapRotation}deg)`;
+      }
+    }, 50);
+  }
 }
-
-// ========== 동선 그리기 ==========
 function startDrawingRoute() {
   isDrawingRoute = true;
   currentRoutePath = [];
@@ -885,6 +935,11 @@ function onGpsUpdate(position) {
   
   // 마커 위치 갱신
   updateMyLocationMarker(latlng);
+  
+  // 트래킹 모드: 지도가 GPS를 따라감 (부드럽게)
+  if (isTrackingMode) {
+    map.setCenter(latlng);
+  }
 }
 
 // 나침반 리스너 부착 시도
@@ -959,13 +1014,56 @@ function updateHeading() {
   
   currentHeading = newHeading;
   headingSource = newSource;
-  applyFanRotation(newHeading);
+  
+  // 헤딩업 모드: 지도를 회전 (내 진행방향이 화면 위로)
+  if (isHeadingUp) {
+    applyMapRotation(-newHeading);
+    // 헤딩업일 땐 부채꼴은 항상 위(12시) 고정 → 0도
+    applyFanRotation(0);
+  } else {
+    // 일반 모드: 지도 정북 고정, 부채꼴만 방향 표시
+    applyFanRotation(newHeading);
+  }
   
   // 디버그 표시 업데이트 (헤더 우측)
   const indicator = document.getElementById('headingSource');
   if (indicator) {
     indicator.textContent = `${newSource} ${Math.round(newHeading)}°`;
   }
+}
+
+// 지도 회전 적용 (CSS transform)
+function applyMapRotation(deg) {
+  // 떨림 방지: 너무 잦은 회전 차단
+  const now = Date.now();
+  if (now - lastMapRotateTime < 100) return;
+  lastMapRotateTime = now;
+  
+  let normalized = deg % 360;
+  if (normalized < 0) normalized += 360;
+  currentMapRotation = normalized;
+  
+  const rotator = document.getElementById('mapRotator');
+  if (rotator) {
+    rotator.style.transform = `translate(-50%, -50%) rotate(${normalized}deg)`;
+  }
+  
+  // 핀 마커들은 반대로 회전 → 항상 똑바로 보이게
+  document.querySelectorAll('.pin-label').forEach(pin => {
+    pin.style.transform = `rotate(${-normalized}deg)`;
+  });
+}
+
+// 헤딩업 모드 끄기 (지도 정북 복귀)
+function resetMapRotation() {
+  currentMapRotation = 0;
+  const rotator = document.getElementById('mapRotator');
+  if (rotator) {
+    rotator.style.transform = `translate(-50%, -50%) rotate(0deg)`;
+  }
+  document.querySelectorAll('.pin-label').forEach(pin => {
+    pin.style.transform = `rotate(0deg)`;
+  });
 }
 
 // 부채꼴 회전 적용
@@ -1019,8 +1117,8 @@ function createMyLocationHTML() {
   </div>`;
 }
 
-// 내 위치 버튼: 1회 클릭으로 내 위치로 이동 + iOS 나침반 권한 요청
-function moveToMyLocation() {
+// 내 위치 버튼: 트래킹 모드 토글 (ON ↔ OFF) + iOS 나침반 권한 요청
+function toggleTracking() {
   // iOS 나침반 권한 요청 (사용자 제스처 안에서)
   if (!headingListenerAttached && 
       typeof DeviceOrientationEvent !== 'undefined' && 
@@ -1032,21 +1130,87 @@ function moveToMyLocation() {
       .catch(err => console.error('나침반 권한:', err));
   }
   
-  if (lastKnownPosition) {
-    map.setCenter(lastKnownPosition);
-    map.setZoom(Math.max(map.getZoom(), 16));
-  } else {
+  // 첫 클릭이고 아직 GPS 못 받았으면 일단 한 번 시도
+  if (!lastKnownPosition) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const latlng = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
         lastKnownPosition = latlng;
         updateMyLocationMarker(latlng);
         map.setCenter(latlng);
-        map.setZoom(16);
+        map.setZoom(Math.max(map.getZoom(), 16));
+        // 트래킹 모드 ON
+        isTrackingMode = true;
+        updateTrackingButtonUI();
       },
       () => { alert('위치를 가져올 수 없습니다.'); },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
+    return;
+  }
+  
+  // 토글: ON ↔ OFF
+  isTrackingMode = !isTrackingMode;
+  
+  if (isTrackingMode) {
+    // ON: 즉시 내 위치로 이동
+    map.setCenter(lastKnownPosition);
+    map.setZoom(Math.max(map.getZoom(), 16));
+  }
+  // OFF: 지도가 그대로 멈춰있음 (아무 동작 없음)
+  
+  updateTrackingButtonUI();
+}
+
+// 트래킹 버튼 색상 업데이트
+function updateTrackingButtonUI() {
+  const btn = document.getElementById('btnMyLocation');
+  if (!btn) return;
+  if (isTrackingMode) {
+    btn.classList.add('tracking-on');
+  } else {
+    btn.classList.remove('tracking-on');
+  }
+}
+
+// 헤딩업 모드 토글
+function toggleHeadingUp() {
+  // iOS 나침반 권한 요청 (사용자 제스처 안에서)
+  if (!headingListenerAttached && 
+      typeof DeviceOrientationEvent !== 'undefined' && 
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(state => {
+        if (state === 'granted') attachHeadingListener();
+      })
+      .catch(err => console.error('나침반 권한:', err));
+  }
+  
+  isHeadingUp = !isHeadingUp;
+  const btn = document.getElementById('btnHeadingUp');
+  
+  if (isHeadingUp) {
+    btn.classList.add('headingup-on');
+    // 헤딩업 켜면 트래킹도 자동 ON (회전 중에 손으로 패닝하면 어긋나므로)
+    if (!isTrackingMode && lastKnownPosition) {
+      isTrackingMode = true;
+      map.setCenter(lastKnownPosition);
+      map.setZoom(Math.max(map.getZoom(), 16));
+      updateTrackingButtonUI();
+    }
+    // 현재 방향으로 즉시 회전 적용
+    if (currentHeading !== null) {
+      applyMapRotation(-currentHeading);
+      applyFanRotation(0);
+    }
+  } else {
+    btn.classList.remove('headingup-on');
+    // 헤딩업 끄면 지도 정북 복귀
+    resetMapRotation();
+    // 부채꼴은 다시 방향 표시 모드로
+    if (currentHeading !== null) {
+      applyFanRotation(currentHeading);
+    }
   }
 }
 
@@ -1916,8 +2080,11 @@ document.getElementById('btnDrawRoute').addEventListener('click', () => {
 
 document.getElementById('btnAddNew').addEventListener('click', startAddingNew);
 
-// 내 위치 버튼: 단순 1회 이동
-document.getElementById('btnMyLocation').addEventListener('click', moveToMyLocation);
+// 내 위치 버튼: 트래킹 모드 토글
+document.getElementById('btnMyLocation').addEventListener('click', toggleTracking);
+
+// 헤딩업 버튼: 진행방향 회전 토글
+document.getElementById('btnHeadingUp').addEventListener('click', toggleHeadingUp);
 
 document.getElementById('btnModalSave').addEventListener('click', saveModal);
 document.getElementById('btnModalCancel').addEventListener('click', closeModal);
